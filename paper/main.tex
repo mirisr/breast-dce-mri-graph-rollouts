@@ -18,7 +18,7 @@
 \setlength{\floatsep}{7pt plus 2pt minus 2pt}
 \setlength{\intextsep}{7pt plus 2pt minus 2pt}
 \setlength{\bibsep}{0pt plus 0.2ex}
-\renewcommand{\bibfont}{\footnotesize}
+\renewcommand{\bibfont}{\scriptsize}
 \emergencystretch=1.5em
 
 \newcommand{\Tzero}{\ensuremath{T_0}}
@@ -524,7 +524,7 @@ strata.
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.98\textwidth]{figures/mc_bio_retrained_t3_buckets.png}
+\includegraphics[width=0.95\textwidth]{figures/mc_bio_retrained_t3_buckets.png}
 \caption{Final-visit conditional MC metrics across available imaging history.
 Endpoint-calibrated models reduce MC-mean FTV MAE, conformal interval width,
 and CRPS across \Tzero$\rightarrow$\Tthree, \Tone$\rightarrow$\Tthree, and
@@ -532,23 +532,37 @@ and CRPS across \Tzero$\rightarrow$\Tthree, \Tone$\rightarrow$\Tthree, and
 \label{fig:t3buckets}
 \end{figure*}
 
-The cohort-wide uncertainty bands in Figure~\ref{fig:uncertaintybands} show
-what these metric changes mean at the patient level. Patients are ordered by
-observed \Tthree{} FTV. The baseline MC distribution is broad and shifted after
-residual correction, especially outside the lowest-volume cases. The retained
-model is visibly more centered and sharper while still improving raw coverage
-and CRPS. This visual pattern illustrates the practical consequence of endpoint
-calibration: the model provides a patient-specific distribution over future MRI
-tumor burden rather than a wide interval wrapped around a biased forecast.
+The two uncertainty visualizations in Figures~\ref{fig:uncertaintybands}
+and~\ref{fig:trajectoryuncertainty} support complementary claims. The
+cohort-sorted bands show population-level behavior: across the held-out
+\Tzero$\rightarrow$\Tthree{} cohort, endpoint calibration shifts the MC mean
+toward the observed \Tthree{} burden and compresses the predictive band,
+especially outside the lowest-volume cases. The patient trajectory examples
+then show the same mechanism at the individual level. Those panels span low,
+median, high, and large-improvement \Tthree{} cases, so they are not a
+separate performance estimate; they are a diagnostic of how the Monte Carlo
+distribution changes over visits. Together, the figures show that the retained
+model provides a patient-specific distribution over the future MRI
+tumor-burden trajectory rather than only a single final-visit point estimate.
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.98\textwidth]{figures/mc_t0t3_patient_uncertainty_sorted.png}
+\includegraphics[width=0.80\textwidth,trim=0 30bp 0 35bp,clip]{figures/mc_t0t3_patient_uncertainty_sorted.png}
 \caption{Cohort-wide \Tzero$\rightarrow$\Tthree{} MC uncertainty bands, with
 patients sorted by observed \Tthree{} FTV. Endpoint calibration produces a
 narrower and better-centered patient-level distribution while improving raw
 coverage and CRPS.}
 \label{fig:uncertaintybands}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.76\textwidth,trim=0 45bp 0 55bp,clip]{figures/mc_patient_trajectory_mean_std_examples.png}
+\caption{Representative \Tzero$\rightarrow$\Tthree{} Monte Carlo trajectory
+uncertainty examples. Gray shows the baseline MC mean and standard-deviation
+band, teal shows the retained-model MC mean and standard-deviation band, and
+black diamonds show observed FTV.}
+\label{fig:trajectoryuncertainty}
 \end{figure*}
 
 \section{Discussion}
@@ -580,10 +594,13 @@ motion. The model should answer imaging-burden questions at the patient level:
 given the MRI visits observed so far, what future FTV distribution is expected,
 how wide is the plausible range, and does the observed endpoint fall inside a
 calibrated interval? The retained model answers those questions with lower
-error and narrower uncertainty than the original baseline. It therefore moves
-the framework from spatial graph forecasting toward an imaging digital-twin
-component: a patient-specific, measurement-aware model of future MRI tumor
-burden.
+error and narrower uncertainty than the original baseline. The trajectory
+examples are important in this context because they show the distribution as a
+longitudinal patient course rather than as an isolated \Tthree{} summary; the
+uncertainty object is a forecasted tumor-burden path, not only a final scalar.
+It therefore moves the framework from spatial graph forecasting toward an
+imaging digital-twin component: a patient-specific, measurement-aware model of
+future MRI tumor burden.
 
 Table~\ref{tab:ablation} also clarifies why \modeltag{} is the strongest
 current candidate rather than simply the lowest-MAE ablation. The FTV-only
