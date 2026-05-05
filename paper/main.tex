@@ -18,7 +18,7 @@
 \setlength{\floatsep}{7pt plus 2pt minus 2pt}
 \setlength{\intextsep}{7pt plus 2pt minus 2pt}
 \setlength{\bibsep}{0pt plus 0.2ex}
-\renewcommand{\bibfont}{\scriptsize}
+\renewcommand{\bibfont}{\footnotesize}
 \emergencystretch=1.5em
 
 \newcommand{\Tzero}{\ensuremath{T_0}}
@@ -221,6 +221,11 @@ visit-level tumor centroid. The alive target records whether a transported
 baseline supervoxel still has tumor support at that visit. Spatial edges use
 $k=8$ nearest-neighbor connectivity within the tumor cloud. The forecaster
 predicts next-visit node displacement, feature change, and alive logit.
+Throughout the equations below, $p$ indexes patients, $t$ indexes visits, and
+$i$ indexes supervoxels. $V_p^{(t)}$ denotes the transported supervoxel nodes
+for patient $p$ at visit $t$, $E_p^{(t)}$ denotes the corresponding spatial
+edges, hats denote model predictions, and $\ftv_{p,t}$ denotes the observed
+functional tumor volume for patient $p$ at visit $t$.
 
 \begin{figure*}[t]
 \centering
@@ -275,6 +280,14 @@ and adds aggregate alive and FTV losses:
 0.20\mathcal{L}_{\ftv}.
 \end{aligned}
 \end{equation}
+Here, $\mathcal{L}_{\mathrm{pos}}$ penalizes node displacement error,
+$\mathcal{L}_{\mathrm{feat}}$ penalizes imaging-feature error,
+$\mathcal{L}_{\mathrm{cloud}}$ penalizes cloud-level spatial rollout error,
+$\mathcal{L}_{\mathrm{alive\,BCE}}$ is the per-node alive binary
+cross-entropy, $\mathcal{L}_{\mathrm{alive\,mass}}$ penalizes aggregate
+active-node count error, and $\mathcal{L}_{\ftv}$ penalizes endpoint FTV
+error. The numeric coefficients are the retained loss weights from the
+biology-calibration grid.
 Scheduled sampling is enabled with maximum self-feeding probability 0.5 after
 a 10-epoch warmup and 60-epoch annealing schedule. The biology losses are
 annealed over 20 epochs. Checkpoint selection is still geometry-first, but
@@ -287,18 +300,22 @@ probabilities:
 \sum_{i \in V_p^{(t)}} \widehat{v}_{i,t}\,
 \sigma(\widehat{a}_{i,t}),
 \end{equation}
-where $\widehat{v}_{i,t}$ is predicted node volume-like burden and
-$\sigma(\widehat{a}_{i,t})$ is alive probability. FTV error is penalized in
-log space,
+where $\widehat{\ftv}_{p,t}$ is the model-predicted FTV, $\widehat{v}_{i,t}$
+is the predicted volume contribution for supervoxel $i$ in mL,
+$\widehat{a}_{i,t}$ is the predicted alive logit, and $\sigma(\cdot)$ is the
+logistic sigmoid that converts the alive logit into an alive probability. The
+product $\widehat{v}_{i,t}\sigma(\widehat{a}_{i,t})$ is therefore the expected
+active-volume contribution of node $i$. FTV error is penalized in log space,
 \begin{equation}
 \mathcal{L}_{\ftv} =
 \left|\log(1+\widehat{\ftv}_{p,t}) -
 \log(1+\ftv_{p,t})\right|,
 \end{equation}
-so that small and large tumors both contribute meaningfully. The alive-burden
-term penalizes aggregate active-node count error. The retained configuration,
-\modeltag, uses the strongest FTV/alive setting from the biology retraining
-grid.
+where $\ftv_{p,t}$ is the observed FTV. The $\log(1+x)$ transform keeps the
+loss well-defined at zero and makes small and large tumors contribute
+meaningfully. The alive-burden term penalizes aggregate active-node count
+error. The retained configuration, \modeltag, uses the strongest FTV/alive
+setting from the biology retraining grid.
 
 \subsection{Conditional Monte Carlo Simulation}
 
@@ -329,21 +346,25 @@ Each model generates
 \[
 758 \times 6 \times 256 = 1{,}164{,}288
 \]
-Monte Carlo samples. Across the baseline and three biology-retrained models,
-the comparison covers 4,657,152 samples. Raw 90\% intervals use the 5th and
-95th percentiles of the sampled FTV distribution. For conformal correction, let
-$[\ell_j,u_j]$ be the raw interval and $y_j$ the observed FTV for held-out
-calibration patient $j$. The nonconformity score is
+Monte Carlo samples, corresponding to 758 patients, six conditioning buckets,
+and $N_{\mathrm{MC}}=256$ draws per patient-bucket pair. Across the baseline
+and three biology-retrained models, the comparison covers 4,657,152 samples.
+Raw 90\% intervals use the 5th and 95th percentiles of the sampled FTV
+distribution. For conformal correction, let $j$ index a held-out calibration
+patient in the same conditioning bucket, let $[\ell_j,u_j]$ be that patient's
+raw 90\% interval, and let $y_j$ be that patient's observed FTV. The
+nonconformity score is
 \begin{equation}
 s_j=\max\{\ell_j-y_j,\; y_j-u_j,\; 0\}.
 \end{equation}
 The empirical 90\% conformal quantile of $\{s_j\}$ within the same bucket is
-then subtracted from $\ell$ and added to $u$ for the target patient. Sharpness
-and calibration are summarized by interval width, empirical coverage, and
-Continuous Ranked Probability Score (CRPS). Spatial samples are evaluated with
-sliced Wasserstein distance (SWD) \citep{kolouri2019sliced}, Chamfer distance,
-and Dice overlap. Paired uncertainty for reported model differences is
-estimated by 5,000 bootstrap resamples over patient identities.
+denoted $q_{0.90}$. For a target patient with raw interval $[\ell,u]$, the
+conformal interval is $[\ell-q_{0.90},u+q_{0.90}]$. Sharpness and calibration
+are summarized by interval width, empirical coverage, and Continuous Ranked
+Probability Score (CRPS). Spatial samples are evaluated with sliced
+Wasserstein distance (SWD) \citep{kolouri2019sliced}, Chamfer distance, and
+Dice overlap. Paired uncertainty for reported model differences is estimated
+by 5,000 bootstrap resamples over patient identities.
 
 \section{Results}
 \label{sec:results}
@@ -524,7 +545,7 @@ strata.
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/mc_bio_retrained_t3_buckets.png}
+\includegraphics[width=0.98\textwidth]{figures/mc_bio_retrained_t3_buckets.png}
 \caption{Final-visit conditional MC metrics across available imaging history.
 Endpoint-calibrated models reduce MC-mean FTV MAE, conformal interval width,
 and CRPS across \Tzero$\rightarrow$\Tthree, \Tone$\rightarrow$\Tthree, and
@@ -547,7 +568,7 @@ tumor-burden trajectory rather than only a single final-visit point estimate.
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.80\textwidth,trim=0 30bp 0 35bp,clip]{figures/mc_t0t3_patient_uncertainty_sorted.png}
+\includegraphics[width=0.90\textwidth]{figures/mc_t0t3_patient_uncertainty_sorted.png}
 \caption{Cohort-wide \Tzero$\rightarrow$\Tthree{} MC uncertainty bands, with
 patients sorted by observed \Tthree{} FTV. Endpoint calibration produces a
 narrower and better-centered patient-level distribution while improving raw
@@ -557,7 +578,7 @@ coverage and CRPS.}
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.76\textwidth,trim=0 45bp 0 55bp,clip]{figures/mc_patient_trajectory_mean_std_examples.png}
+\includegraphics[width=0.90\textwidth,trim=0 20bp 0 30bp,clip]{figures/mc_patient_trajectory_mean_std_examples.png}
 \caption{Representative \Tzero$\rightarrow$\Tthree{} Monte Carlo trajectory
 uncertainty examples. Gray shows the baseline MC mean and standard-deviation
 band, teal shows the retained-model MC mean and standard-deviation band, and
