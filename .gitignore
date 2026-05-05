@@ -1,0 +1,51 @@
+# macOS and editor files
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Python caches and environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+*.err
+*.out
+
+# LaTeX build products
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+paper/main.pdf
+
+# Raw or large image data should not be added to this repo by accident.
+raw/
+dicom/
+nifti/
+images/
+segmentations/
+data/**/raw/
+data/**/dicom/
+data/**/nifti/
+data/**/images/
+data/**/segmentations/
+experiments/**/logs/
+experiments/**/runs/
+
+# Keep derived graph tensors, model checkpoints, and parquet outputs in this
+# private repository unless this repo is converted to a public release.
+!data/ispy2/graphs_consistent/*.pt
+!models/**/*.pt
+!results/**/*.parquet

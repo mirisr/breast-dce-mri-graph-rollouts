@@ -1,0 +1,639 @@
+\documentclass[10pt,twocolumn]{article}
+
+\usepackage[margin=0.68in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{tabularx}
+\usepackage{xcolor}
+
+\captionsetup{font=small,labelfont=bf}
+\setlength{\columnsep}{0.22in}
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\floatsep}{7pt plus 2pt minus 2pt}
+\setlength{\intextsep}{7pt plus 2pt minus 2pt}
+\setlength{\bibsep}{0pt plus 0.2ex}
+\renewcommand{\bibfont}{\footnotesize}
+\emergencystretch=1.5em
+
+\newcommand{\Tzero}{\ensuremath{T_0}}
+\newcommand{\Tone}{\ensuremath{T_1}}
+\newcommand{\Ttwo}{\ensuremath{T_2}}
+\newcommand{\Tthree}{\ensuremath{T_3}}
+\newcommand{\ftv}{\mathrm{FTV}}
+\newcommand{\modeltag}{\texttt{bio\_ftv020\_alive005}}
+
+\title{\vspace{-0.35in}
+Calibrated Graph Convolutional Rollouts for Probabilistic Functional Tumor Volume Forecasting in Breast DCE-MRI}
+
+\author{
+Iris Seaman\\
+\href{mailto:iris.seaman01@utrgv.edu}{iris.seaman01@utrgv.edu}
+\and
+Tamer Oraby\\
+\href{mailto:tamer.oraby@utrgv.edu}{tamer.oraby@utrgv.edu}
+}
+
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Longitudinal breast dynamic contrast-enhanced magnetic resonance imaging
+(DCE-MRI) provides repeated measurements of tumor burden during neoadjuvant
+treatment, but most response models reduce this sequence to a scalar endpoint
+or a fixed imaging feature trajectory. This work develops an endpoint-calibrated
+graph rollout model for forecasting patient-specific three-dimensional tumor
+graphs and quantifying uncertainty in future functional tumor volume (FTV).
+Tumors are represented as registration-consistent supervoxel graphs across
+\Tzero, \Tone, \Ttwo, and \Tthree. A scheduled-sampling graph forecaster
+predicts node displacement, feature evolution, and active-node probability.
+Conditional Monte Carlo simulation resamples held-out residual structure within
+each conditioning bucket to produce patient-level predictive distributions for
+future FTV and sampled tumor clouds. The retained model, \modeltag, adds
+aggregate FTV and alive-burden objectives to a spatial rollout baseline. On
+758 held-out patients, deterministic \Tzero$\rightarrow$\Tthree{} FTV mean
+absolute error decreased from 12.88 mL to 5.88 mL while spatial metrics were
+preserved. Under the same residual Monte Carlo sampler,
+\Tzero$\rightarrow$\Tthree{} MC-mean FTV mean absolute error decreased from
+15.26 mL to 7.61 mL, raw 90\% coverage increased from 0.766 to 0.876,
+conformal 90\% interval width decreased from 59.51 mL to 27.95 mL, Continuous
+Ranked Probability Score decreased from 8.35 to 5.16, and MC alive-count error
+decreased from 40.78 to 2.69 supervoxels. These results show that endpoint
+calibration is the step that turns a spatially plausible tumor rollout into a
+patient-level uncertainty model for future MRI tumor burden.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+Neoadjuvant breast cancer treatment creates a natural forecasting problem:
+given the tumor observed on serial MRI, estimate how much active tumor burden
+will remain at future treatment visits. DCE-MRI is especially relevant because
+it provides both morphologic and functional information about tumor response
+during therapy. In I-SPY studies, functional tumor volume (FTV) has been a
+central quantitative MRI biomarker, with prior work showing that longitudinal
+FTV and related DCE-MRI features carry response and recurrence information
+\citep{hylton2012ispy,hylton2016ftv,li2020ispy2mri}. Public I-SPY2 and
+ACRIN-6698 imaging resources further make this problem testable at cohort scale
+\citep{tciaispy2,tciaacrin6698}.
+
+The modeling goal in this work is deliberately narrower and more spatially
+explicit than standard endpoint classification. The objective is to forecast
+the evolving tumor graph itself, then ask whether the forecasted graph supports
+calibrated patient-level FTV uncertainty. A tumor is represented as a graph of
+three-dimensional supervoxels whose node identities are propagated through
+time by deformable registration. This construction allows a graph neural
+forecaster to predict how each tumor region moves, changes imaging features,
+and remains active or inactive across visits.
+
+A previous scheduled-sampling rollout model produced coherent three-dimensional
+tumor clouds, but conditional Monte Carlo diagnostics exposed an endpoint
+calibration failure: the deterministic rollout center was too low in FTV and
+active tumor mass. The uncertainty sampler then had to compensate for a biased
+center. This paper studies the corrected model, \modeltag, which keeps the
+same graph rollout backbone but adds endpoint-level FTV and alive-burden
+supervision. The central question is whether correcting the deterministic
+tumor-burden center makes the same Monte Carlo uncertainty layer sharper and
+better calibrated.
+
+The contributions are:
+\begin{enumerate}
+  \item an endpoint-calibrated graph rollout model for longitudinal breast
+  DCE-MRI tumor supervoxel forecasting;
+  \item a conditional residual Monte Carlo protocol that produces
+  patient-specific future FTV distributions from held-out calibration errors;
+  \item an empirical demonstration that FTV/alive-burden calibration reduces
+  both point-prediction error and uncertainty width while improving raw
+  coverage and probabilistic scoring.
+\end{enumerate}
+
+\section{Related Work and Novelty}
+\label{sec:related}
+
+\subsection{Longitudinal Breast MRI and FTV}
+
+Serial breast MRI response modeling has a strong clinical foundation. I-SPY2
+was designed as an adaptive neoadjuvant platform trial with serial imaging and
+biomarker collection \citep{barker2009ispy2}. Earlier I-SPY analyses
+established DCE-MRI and FTV as informative longitudinal measures of tumor
+response and longer-term risk \citep{hylton2012ispy,hylton2016ftv}. Later
+I-SPY2 analyses showed that combining multiple MRI features, including FTV,
+improves response prediction compared with using individual features alone
+\citep{li2020ispy2mri}. Protocol-adherence analyses further showed that FTV
+performance depends on standardized acquisition and image quality, and more
+recent work has emphasized that longitudinal FTV estimation error itself matters
+when MRI is used to personalize therapy
+\citep{onishi2020protocol,onishi2023ftvvariation}. These studies motivate FTV
+as the endpoint that the rollout distribution must be calibrated to, rather
+than treating the supervoxel forecast as only a geometric prediction problem.
+
+\subsection{Deep Learning for Breast MRI Response}
+
+Most published breast MRI response models operate at the patient or image
+level: handcrafted MRI features, radiomics, convolutional models, transformers,
+or multimodal predictors are used to estimate a response endpoint from one or
+more visits. Recent longitudinal and spatiotemporal MRI deep-learning work
+demonstrates the value of temporal representation learning, but still primarily
+maps one or more scans to a scalar response label
+\citep{tang2025sti,huang2026bstnet}. That framing is clinically valuable, but
+it does not directly produce a patient-specific three-dimensional tumor
+trajectory or a calibrated distribution over future imaging burden. The present
+work asks a different question: whether a model can forecast the evolving tumor
+graph and then quantify uncertainty in future FTV from that forecast.
+
+\subsection{Digital Twins and Image-Based Tumor Forecasting}
+
+Digital twin work is the closest conceptual neighbor. In oncology, a digital
+twin is generally a patient-specific model updated from individual data to
+simulate tumor behavior under possible interventions
+\citep{mccoy2025digitaltwins}. In breast cancer, image-based mathematical
+models have used longitudinal MRI to constrain reaction--diffusion and
+mechanically coupled tumor-growth equations for patient-specific response
+prediction \citep{weis2013mechanically,weis2015response,jarrett2020regimens}.
+More recent
+MRI-calibrated digital models forecast spatiotemporal triple-negative breast
+cancer response and evaluate alternative neoadjuvant schedules
+\citep{wu2022digitalmodels,wu2025digitaltwins,christenson2025personalizing}.
+
+This paper is adjacent to that digital-twin literature but makes a different
+technical choice. Rather than calibrating a mechanistic PDE model of tumor cell
+growth and drug response, it learns a registration-consistent supervoxel graph
+rollout from the I-SPY2/ACRIN-derived cohort. Rather than optimizing treatment
+schedules, it focuses on imaging-burden forecasting across the observed MRI
+visits. Rather than using only a deterministic forecast, it builds empirical
+patient-level FTV distributions from held-out residual structure and evaluates
+their calibration. The result is not a complete treatment-selection digital
+twin; it is a data-driven imaging forecast module that could later serve as one
+component of a digital-twin workflow.
+
+\subsection{Graph Rollouts and Probabilistic Calibration}
+
+Graph neural networks provide a natural inductive bias for relational and
+dynamical systems \citep{gilmer2017neural,sanchezgonzalez2018physics}, and
+scheduled sampling addresses exposure bias in autoregressive sequence
+prediction \citep{bengio2015scheduled}. This work combines those ideas with
+registration-consistent tumor supervoxels and endpoint-specific calibration.
+The probabilistic component is distinct from typical classification
+uncertainty. Monte Carlo samples are generated by resampling empirical residual
+structure from held-out patients, analogous in spirit to residual bootstrap
+reasoning \citep{efron1993bootstrap}. The resulting FTV distributions are
+evaluated with coverage, conformal correction \citep{angelopoulos2021conformal,
+romano2019cqr}, and Continuous Ranked Probability Score (CRPS), a proper
+scoring rule for full predictive distributions \citep{gneiting2007proper}.
+
+The contribution is the combined system: a registration-consistent graph
+rollout calibrated to endpoint-level FTV and alive burden, with patient-level
+conditional Monte Carlo uncertainty for future MRI tumor burden.
+
+\section{Methods}
+\label{sec:methods}
+
+\subsection{Cohort and Graph Representation}
+
+The analysis uses 758 patients with four longitudinal DCE-MRI visits and
+usable registration across \Tzero, \Tone, \Ttwo, and \Tthree. These patients
+come from the four-visit graph-bearing I-SPY2/ACRIN-derived cohort and are
+evaluated under the same five-fold held-out-patient protocol used for the
+scheduled-sampling baseline. Each patient is predicted by the checkpoint from
+the fold in which that patient was held out.
+
+Each baseline tumor is partitioned into compact three-dimensional SLIC
+supervoxels \citep{achanta2012slic}. Deformable registration transports the
+baseline supervoxel partition to later visits using symmetric diffeomorphic
+transforms \citep{avants2008symmetric}. As a result, node $i$ denotes the same
+baseline tumor region at all visits, while node features are measured from the
+native follow-up image support.
+
+For patient $p$ and visit $t$, the graph is
+$G_p^{(t)}=(V_p^{(t)},E_p^{(t)})$. Each node has six imaging-burden features:
+$\log(1+\mathrm{voxel\ count})$, volume in mL, percent enhancement mean and
+standard deviation, and signal enhancement ratio mean and standard deviation.
+Centroid positions are represented in millimeters after subtracting the
+visit-level tumor centroid. The alive target records whether a transported
+baseline supervoxel still has tumor support at that visit. Spatial edges use
+$k=8$ nearest-neighbor connectivity within the tumor cloud. The forecaster
+predicts next-visit node displacement, feature change, and alive logit.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/bio_retrained_model_design.png}
+\caption{Forecasting and uncertainty workflow. Registration-consistent
+supervoxel graphs are rolled forward with a shared LSGC forecaster. Aggregate
+FTV and alive-burden objectives calibrate the deterministic rollout center
+before the unchanged residual Monte Carlo sampler generates patient-level FTV
+distributions.}
+\label{fig:design}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/ispy2_two_patient_rollout_static.pdf}
+\caption{Representative held-out graph forecast examples generated from the
+retained model outputs. Each row shows the observed \Tzero{} supervoxel graph,
+the retained model's predicted \Tthree{} supervoxel graph, the
+\Tzero$\rightarrow$\Tthree{} Monte Carlo FTV forecast distribution, and the
+registered observed \Tthree{} graph in patient-centered millimeter coordinates.
+Node color and size encode each supervoxel's local FTV contribution, and faint
+edges show the within-visit kNN graph. The retained model predicted \Tthree{}
+FTV of 23.77 mL versus 23.74 mL observed for ISPY2-209397 and 27.04 mL versus
+27.04 mL observed for ISPY2-149654, with 0 alive-supervoxel count error in both
+cases.}
+\label{fig:qualrollout}
+\end{figure*}
+
+\subsection{Endpoint-Calibrated Rollout Training}
+
+The retained model is based on the scheduled-sampling consistent graph
+forecaster. The architecture embeds the six node features into a 64-dimensional
+hidden state, applies two residual local spatial graph convolution layers, and
+concatenates an 8-dimensional visit-gap embedding before three per-node heads:
+3D displacement, six-dimensional feature change, and alive logit. The model is
+initialized from the previously selected scheduled-sampling checkpoint, trained
+with AdamW at learning rate $10^{-4}$, freezes the backbone for the first eight
+epochs, and trains for up to 120 epochs with early stopping.
+
+The original one-step loss penalized node displacement, feature change, and
+cloud-level rollout geometry. The endpoint-calibrated model keeps those terms
+and adds aggregate alive and FTV losses:
+\begin{equation}
+\begin{aligned}
+\mathcal{L} ={}&
+\mathcal{L}_{\mathrm{pos}} +
+0.5\mathcal{L}_{\mathrm{feat}} +
+\mathcal{L}_{\mathrm{cloud}} \\
+&+
+0.05\mathcal{L}_{\mathrm{alive\,BCE}} +
+0.05\mathcal{L}_{\mathrm{alive\,mass}} +
+0.20\mathcal{L}_{\ftv}.
+\end{aligned}
+\end{equation}
+Scheduled sampling is enabled with maximum self-feeding probability 0.5 after
+a 10-epoch warmup and 60-epoch annealing schedule. The biology losses are
+annealed over 20 epochs. Checkpoint selection is still geometry-first, but
+adds small validation penalties for \Tthree{} FTV error and alive-count error.
+
+Predicted FTV is computed from the predicted node volumes and alive
+probabilities:
+\begin{equation}
+\widehat{\ftv}_{p,t} =
+\sum_{i \in V_p^{(t)}} \widehat{v}_{i,t}\,
+\sigma(\widehat{a}_{i,t}),
+\end{equation}
+where $\widehat{v}_{i,t}$ is predicted node volume-like burden and
+$\sigma(\widehat{a}_{i,t})$ is alive probability. FTV error is penalized in
+log space,
+\begin{equation}
+\mathcal{L}_{\ftv} =
+\left|\log(1+\widehat{\ftv}_{p,t}) -
+\log(1+\ftv_{p,t})\right|,
+\end{equation}
+so that small and large tumors both contribute meaningfully. The alive-burden
+term penalizes aggregate active-node count error. The retained configuration,
+\modeltag, uses the strongest FTV/alive setting from the biology retraining
+grid.
+
+\subsection{Conditional Monte Carlo Simulation}
+
+For each model, each held-out patient is evaluated under three conditioning
+regimes: \Tzero{} observed; \Tzero,\Tone{} observed; and \Tzero,\Tone,\Ttwo{}
+observed. This yields six prediction buckets:
+\Tzero$\rightarrow$\Tone, \Tzero$\rightarrow$\Ttwo, \Tzero$\rightarrow$\Tthree,
+\Tone$\rightarrow$\Ttwo, \Tone$\rightarrow$\Tthree, and
+\Ttwo$\rightarrow$\Tthree.
+
+The deterministic rollout is first computed with the held-out fold checkpoint.
+Residuals between predicted and observed outcomes are then pooled within each
+bucket, excluding the target patient. Each Monte Carlo draw samples residual
+components from this calibration pool:
+\begin{itemize}
+\item patient-level FTV residual,
+\item alive-count residual,
+\item global cloud displacement residual,
+\item local node displacement residuals,
+\item log-volume residuals,
+\item Gumbel top-$k$ alive-mask stochasticity.
+\end{itemize}
+Model weights, fold assignment, observed conditioning visits, and the
+deterministic rollout center are fixed. Only the residual correction and alive
+mask realization vary across draws.
+
+Each model generates
+\[
+758 \times 6 \times 256 = 1{,}164{,}288
+\]
+Monte Carlo samples. Across the baseline and three biology-retrained models,
+the comparison covers 4,657,152 samples. Raw 90\% intervals use the 5th and
+95th percentiles of the sampled FTV distribution. For conformal correction, let
+$[\ell_j,u_j]$ be the raw interval and $y_j$ the observed FTV for held-out
+calibration patient $j$. The nonconformity score is
+\begin{equation}
+s_j=\max\{\ell_j-y_j,\; y_j-u_j,\; 0\}.
+\end{equation}
+The empirical 90\% conformal quantile of $\{s_j\}$ within the same bucket is
+then subtracted from $\ell$ and added to $u$ for the target patient. Sharpness
+and calibration are summarized by interval width, empirical coverage, and
+Continuous Ranked Probability Score (CRPS). Spatial samples are evaluated with
+sliced Wasserstein distance (SWD) \citep{kolouri2019sliced}, Chamfer distance,
+and Dice overlap. Paired uncertainty for reported model differences is
+estimated by 5,000 bootstrap resamples over patient identities.
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Endpoint Calibration Corrected the Baseline Failure Mode}
+
+The scheduled-sampling baseline had a specific endpoint failure rather than a
+global collapse of the graph rollout. It preserved the spatial rollout
+representation, but its deterministic center substantially underpredicted final
+tumor burden. In the held-out \Tzero$\rightarrow$\Tthree{} evaluation,
+observed mean FTV was 24.94 mL while the baseline deterministic mean was
+12.43 mL, giving a mean bias of $-12.51$ mL and mean absolute error (MAE) of
+12.88 mL. This is the central diagnostic result: a graph trajectory can remain
+geometrically plausible while still being miscentered in total active tumor
+volume.
+
+Adding endpoint-level FTV and alive-burden objectives corrected that failure
+mode while keeping the graph rollout backbone fixed. The retained model
+predicted a deterministic \Tthree{} mean of 23.21 mL, reducing bias to
+$-1.73$ mL and MAE to 5.88 mL. The paired MAE reduction was 7.00 mL
+(95\% bootstrap CI: 6.07--7.95), a 54.3\% reduction in deterministic FTV
+error. The retained model's \Tzero$\rightarrow$\Tthree{} deterministic bias
+was near zero relative to the baseline and had a bootstrap mean CI of
+$-2.94$ to $-0.59$ mL.
+
+The FTV correction did not come from sacrificing tumor-cloud geometry. SWD
+changed from 1.291 mm to 1.294 mm, Chamfer distance from 2.837 mm to 2.843 mm,
+Dice from 0.1338 to 0.1331, and surface Dice from 0.4631 to 0.4622. The large
+change was instead in active tumor burden: alive-count absolute error decreased
+from 58.00 to 1.70 supervoxels. Figure~\ref{fig:predobs} shows the same
+pattern at the patient level: endpoint calibration moves predictions toward
+the identity line while preserving the expected residual spread among
+high-volume tumors.
+
+\begin{table}[t]
+\centering
+\caption{\Tzero$\rightarrow$\Tthree{} deterministic endpoint results.}
+\label{tab:deterministic}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrr}
+\toprule
+Metric & Baseline & Retained \\
+\midrule
+Predicted FTV mean (mL) & 12.43 & 23.21 \\
+Observed FTV mean (mL) & 24.94 & 24.94 \\
+FTV bias (mL) & -12.51 & -1.73 \\
+FTV MAE (mL) & 12.88 & 5.88 \\
+Alive-count abs. error & 58.00 & 1.70 \\
+SWD (mm) & 1.291 & 1.294 \\
+Chamfer (mm) & 2.837 & 2.843 \\
+Dice & 0.1338 & 0.1331 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/deterministic_t3_pred_obs.png}
+\caption{\Tzero$\rightarrow$\Tthree{} deterministic FTV predictions versus
+observed \Tthree{} FTV. Endpoint calibration removes the large low-bias center
+seen in the scheduled-sampling baseline.}
+\label{fig:predobs}
+\end{figure}
+
+\subsection{The Same Monte Carlo Sampler Became Sharper and Better Calibrated}
+
+The decisive test was whether the uncertainty distribution improved when the
+sampler was held fixed and only the deterministic rollout center was changed.
+Under the same residual buckets, target-patient exclusion, alive-mask sampling,
+and conformal interval calculation, the \Tzero$\rightarrow$\Tthree{} MC-mean
+FTV MAE decreased from 15.26 mL to 7.61 mL. The paired MAE reduction was
+7.65 mL (95\% CI: 7.11--8.20). This shows that the baseline MC layer was not
+merely noisy; it was being forced to compensate for a biased center.
+
+The interval behavior gives the strongest evidence that uncertainty calibration
+improved.
+Raw 90\% coverage increased from 0.766 to 0.876 (paired increase: 0.109;
+95\% CI: 0.075--0.145), so the uncorrected MC distribution moved closer to
+nominal coverage before conformal expansion. At the same time, raw interval
+width decreased from 56.87 mL to 24.42 mL and conformal interval width
+decreased from 59.51 mL to 27.95 mL. The paired conformal-width reduction was
+31.57 mL (95\% CI: 30.41--32.80). The simultaneous increase in raw coverage
+and decrease in interval width is important: the retained model is not gaining
+coverage by becoming more conservative. It is producing a distribution that is
+both better centered and sharper.
+
+The full probabilistic score moved in the same direction. CRPS decreased from
+8.35 to 5.16, indicating that the retained distribution placed more probability
+mass near the observed FTV. MC alive-count error decreased from 40.78 to
+2.69 supervoxels, aligning the sampled active graph burden with the volume
+calibration result.
+
+\begin{table}[t]
+\centering
+\caption{\Tzero$\rightarrow$\Tthree{} conditional Monte Carlo results.}
+\label{tab:mc}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrr}
+\toprule
+Metric & Baseline & Retained \\
+\midrule
+MC-mean FTV MAE (mL) & 15.26 & 7.61 \\
+MC-median FTV MAE (mL) & 10.69 & 6.08 \\
+Raw 90\% coverage & 0.766 & 0.876 \\
+Raw 90\% width (mL) & 56.87 & 24.42 \\
+Conformal 90\% width (mL) & 59.51 & 27.95 \\
+CRPS & 8.35 & 5.16 \\
+MC alive-count abs. error & 40.78 & 2.69 \\
+SWD (mm) & 1.320 & 1.207 \\
+Chamfer (mm) & 3.656 & 3.485 \\
+Dice & 0.047 & 0.051 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table*}[t]
+\centering
+\caption{\Tzero$\rightarrow$\Tthree{} Monte Carlo ablation comparison. The
+high-volume tail is the top decile of observed \Tthree{} FTV
+($\geq$58.79 mL; 76 patients). SV denotes supervoxels.}
+\label{tab:ablation}
+\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+Model & Det. bias & Det. MAE & MC MAE & Raw cov. & Conf. width & CRPS & Alive err. & Tail MC MAE \\
+ & (mL) & (mL) & (mL) &  & (mL) &  & (SV) & (mL) \\
+\midrule
+Baseline & -12.51 & 12.88 & 15.26 & 0.766 & 59.51 & 8.35 & 40.78 & 42.59 \\
+FTV .020 + alive .005 & -1.73 & 5.88 & 7.61 & 0.876 & 27.95 & 5.16 & 2.69 & 29.65 \\
+FTV only .010 & -1.51 & 5.99 & 7.31 & 0.875 & 26.92 & 5.15 & 7.00 & 30.85 \\
+FTV .010 + alive .002 & -1.50 & 5.99 & 7.53 & 0.883 & 29.14 & 5.19 & 2.70 & 29.79 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/mc_diagnostic_bias_coverage_width.png}
+\caption{Monte Carlo diagnostics before and after endpoint calibration.
+The retained model reduces deterministic FTV bias, improves raw coverage, and
+substantially narrows conformal intervals.}
+\label{fig:mcdiagnostic}
+\end{figure}
+
+\subsection{Improvement Persisted Across Conditioning Times and Patients}
+
+The benefit was not limited to the baseline-to-final rollout. In the three
+\Tthree{} buckets, deterministic FTV MAE decreased from 12.88, 13.17, and
+13.05 mL to 5.88, 5.59, and 4.65 mL for \Tzero$\rightarrow$\Tthree,
+\Tone$\rightarrow$\Tthree, and \Ttwo$\rightarrow$\Tthree, respectively. MC-mean
+FTV MAE decreased from 15.26, 14.88, and 13.80 mL to 7.61, 7.18, and
+5.80 mL. The paired MC-mean MAE reductions were 7.65 mL (95\% CI:
+7.11--8.20), 7.69 mL (95\% CI: 7.17--8.23), and 8.00 mL (95\% CI:
+7.46--8.59), respectively. Raw coverage increased from approximately
+0.76--0.78 to 0.86--0.88, while conformal widths decreased from approximately
+60 mL to 24--30 mL. The paired conformal-width reductions were 31.57, 30.53,
+and 36.06 mL for the three final-visit buckets.
+
+Figure~\ref{fig:t3buckets} summarizes this result across the final-visit
+conditioning regimes. As more observed MRI visits are available, all methods
+improve, but the retained and retrained ablations remain separated from the
+baseline across MC-mean MAE, conformal width, and CRPS. This is important
+because the result is not a single \Tzero$\rightarrow$\Tthree{} artifact; the
+same endpoint-calibrated center improves future FTV uncertainty when the model
+is conditioned from baseline, early treatment, or mid-treatment imaging.
+
+The improvement was also consistent across molecular subtypes in the
+\Tzero$\rightarrow$\Tthree{} bucket. MC-mean FTV MAE reductions were 7.56 mL
+for HR+/HER2+ tumors, 7.51 mL for HR+/HER2- tumors, 7.56 mL for HR-/HER2+
+tumors, and 7.89 mL for triple-negative tumors. The smallest subgroup was
+HR-/HER2+ ($n=57$), but even there the retained model reduced MC-mean FTV MAE
+from 18.34 to 10.78 mL. This subgroup remained the hardest case, so the result
+supports broad improvement but not uniform calibration across all biologic
+strata.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.98\textwidth]{figures/mc_bio_retrained_t3_buckets.png}
+\caption{Final-visit conditional MC metrics across available imaging history.
+Endpoint-calibrated models reduce MC-mean FTV MAE, conformal interval width,
+and CRPS across \Tzero$\rightarrow$\Tthree, \Tone$\rightarrow$\Tthree, and
+\Ttwo$\rightarrow$\Tthree{} conditioning.}
+\label{fig:t3buckets}
+\end{figure*}
+
+The cohort-wide uncertainty bands in Figure~\ref{fig:uncertaintybands} show
+what these metric changes mean at the patient level. Patients are ordered by
+observed \Tthree{} FTV. The baseline MC distribution is broad and shifted after
+residual correction, especially outside the lowest-volume cases. The retained
+model is visibly more centered and sharper while still improving raw coverage
+and CRPS. This visual pattern illustrates the practical consequence of endpoint
+calibration: the model provides a patient-specific distribution over future MRI
+tumor burden rather than a wide interval wrapped around a biased forecast.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.98\textwidth]{figures/mc_t0t3_patient_uncertainty_sorted.png}
+\caption{Cohort-wide \Tzero$\rightarrow$\Tthree{} MC uncertainty bands, with
+patients sorted by observed \Tthree{} FTV. Endpoint calibration produces a
+narrower and better-centered patient-level distribution while improving raw
+coverage and CRPS.}
+\label{fig:uncertaintybands}
+\end{figure*}
+
+\section{Discussion}
+\label{sec:discussion}
+
+This study shows why endpoint calibration is not an optional refinement for
+longitudinal imaging rollouts. The baseline model answered a spatial question:
+can a registration-consistent graph forecaster roll a tumor cloud forward
+through treatment? The conditional MC experiment asked a more demanding
+question: can that forecast serve as a calibrated center for uncertainty in
+future active tumor burden? The baseline answer was no. Its tumor clouds were
+plausible enough to support rollout evaluation, but the FTV center was biased
+low and alive mass was poorly calibrated. Conformal correction could recover
+nominal coverage, but only by expanding already wide intervals around a
+miscentered forecast.
+
+The retained model changes the interpretation of the whole pipeline. With the
+sampler, residual buckets, held-out fold protocol, and conformal calculation
+unchanged, endpoint-calibrated training produced sharper and better-centered
+distributions. That isolates the mechanism: the main bottleneck was not the
+Monte Carlo machinery itself, but the deterministic rollout center used by that
+machinery. A residual uncertainty layer cannot turn a systematically
+underestimated tumor-burden trajectory into a clinically interpretable
+predictive distribution unless the base forecast is first calibrated to the
+endpoint being queried.
+
+This matters because the target use case is not only to animate plausible tumor
+motion. The model should answer imaging-burden questions at the patient level:
+given the MRI visits observed so far, what future FTV distribution is expected,
+how wide is the plausible range, and does the observed endpoint fall inside a
+calibrated interval? The retained model answers those questions with lower
+error and narrower uncertainty than the original baseline. It therefore moves
+the framework from spatial graph forecasting toward an imaging digital-twin
+component: a patient-specific, measurement-aware model of future MRI tumor
+burden.
+
+Table~\ref{tab:ablation} also clarifies why \modeltag{} is the strongest
+current candidate rather than simply the lowest-MAE ablation. The FTV-only
+model had slightly lower \Tzero$\rightarrow$\Tthree{} MC-mean MAE (7.31 mL
+versus 7.61 mL), but its MC alive-count error was substantially worse
+(7.00 versus 2.69 supervoxels). The retained model gives the better scientific
+balance: strong deterministic FTV accuracy, large alive-burden correction,
+improved raw coverage, narrower intervals, lower CRPS, better high-volume tail
+performance than the FTV-only ablation, and preserved spatial metrics. That
+balance is essential because the method is intended to remain a graph rollout
+model, not collapse into a scalar FTV regressor.
+
+The remaining spatial results should be interpreted carefully. Endpoint
+calibration did not materially degrade SWD, Chamfer distance, or Dice, which is
+necessary for preserving the graph-forecasting claim. However, the largest
+gains are clearly in tumor-burden calibration rather than in full spatial
+uncertainty. The current evidence therefore supports a calibrated FTV
+uncertainty model with preserved cloud geometry, not a complete solution to
+probabilistic three-dimensional tumor-shape forecasting.
+
+\subsection{Limitations}
+
+This is still an imaging-burden forecasting model, not a complete clinical
+decision model. It predicts future MRI FTV and sampled tumor clouds under the
+available graph representation; it does not model treatment counterfactuals,
+optimize therapy schedules, or predict endpoints that are not observed in the
+longitudinal MRI sequence. The residual Monte Carlo sampler is empirical and
+depends on the exchangeability of held-out residuals within conditioning
+buckets. High-volume \Tthree{} tumors remain the hardest subgroup, suggesting
+that future residual sampling may need FTV-stratified or subtype-aware
+calibration. The current evaluation is internal to the I-SPY2/ACRIN-derived
+cohort; external validation on independent longitudinal breast MRI cohorts is
+required before clinical translation.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+Endpoint calibration converted a strong spatial rollout model into a much more
+useful probabilistic tumor-burden forecaster. The retained model,
+\modeltag, reduced \Tzero$\rightarrow$\Tthree{} deterministic FTV MAE by 54\%,
+halved MC-mean FTV MAE, improved raw 90\% coverage, cut conformal interval
+width by more than half, and reduced MC alive-count error by more than 90\%.
+The central result is methodological and practical: for longitudinal MRI graph
+rollouts, uncertainty estimates become meaningful only after the deterministic
+forecast is calibrated to patient-level active tumor burden. Once that
+calibration is in place, the model can support the imaging question that
+motivated the MC experiment: what distribution of future MRI tumor burden should
+be expected for this patient, given the visits observed so far?
+
+\bibliographystyle{unsrtnat}
+\bibliography{references}
+
+\end{document}

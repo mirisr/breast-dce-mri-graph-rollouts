@@ -1,0 +1,700 @@
+\documentclass[11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+\emergencystretch=2em
+
+\graphicspath{{figures/mc_bio_retraining/}{reports/figures/mc_bio_retraining/}}
+
+\title{From Conditional Monte Carlo Diagnostics to FTV-Calibrated Consistent Rollout Models}
+\author{}
+\date{Progress update}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+I used the conditional Monte Carlo experiment to stress-test the previously
+successful consistent graph rollout model under the way I ultimately want to
+use it: patient-level uncertainty estimation and treatment-response reasoning.
+The original scheduled-sampling model produced coherent graph rollouts, but the
+Monte Carlo analysis revealed a specific biological calibration problem. The
+deterministic T0-to-T3 rollout underpredicted mean functional tumor volume
+(FTV) by 12.51 mL, and the residual Monte Carlo correction overcompensated by
+moving the Monte Carlo mean above the observed mean. Raw 90\% intervals
+under-covered, and conformal intervals reached nominal coverage only after
+substantial widening. These findings motivated a targeted retraining grid with
+aggregate FTV and alive-burden objectives. The best retrained model reduced
+T0-to-T3 FTV MAE from
+12.88 mL to 5.88 mL while leaving spatial metrics essentially unchanged. I then
+reran the same conditional Monte Carlo sampler on the retrained checkpoints.
+For the primary retrained model, T0-to-T3 MC-mean FTV MAE dropped from
+15.26 mL to 7.61 mL, raw 90\% coverage increased from 0.766 to 0.876, conformal
+90\% interval width shrank from 59.51 mL to 27.95 mL, and MC alive-count error
+dropped from 40.78 to 2.69 supervoxels. The interpretation is that the Monte
+Carlo experiment did not invalidate the earlier rollout model; it identified
+the next modeling requirement: endpoint-calibrated tumor burden before
+uncertainty estimates can be trusted for response analysis. The conclusion from
+this phase is that \texttt{bio\_ftv020\_alive005} is the best balanced
+candidate to carry forward. Its predictions can now support patient-level
+imaging questions that the original rollout model could not answer reliably:
+what future MRI FTV is likely after conditioning on available visits, how wide
+the plausible FTV range is, whether the observed endpoint falls inside a
+calibrated interval, and how much active tumor burden remains in the graph.
+That is meaningful because the model is no longer only a plausible spatial
+forecaster; it is becoming an endpoint-calibrated uncertainty model for MRI
+tumor-burden response analysis.
+\end{abstract}
+
+\section{Why this experiment mattered}
+
+The previously retained model, \texttt{v2\_sched\_samp}, was already a strong
+consistent graph rollout model. It used scheduled sampling and learned to roll
+registered tumor graphs through the I-SPY2 imaging sequence:
+\[
+T0 \rightarrow T1 \rightarrow T2 \rightarrow T3.
+\]
+Each graph node represents a tumor supervoxel with a 3D position, imaging
+features, a volume-like feature, and an alive probability. The model predicts
+how those node states evolve across treatment.
+
+That model was useful as a spatial rollout model, but I wanted to know whether
+it could also serve as the center of a patient-level uncertainty distribution.
+This is a harder question. A graph trajectory can look plausible while still
+being wrong about total active tumor burden. For treatment-response modeling,
+that distinction matters because FTV is the clinically interpretable endpoint
+that connects the graph prediction to tumor response.
+
+\section{Measurement and modeling terminology}
+
+Several measurements recur throughout this update. They are all related, but
+they answer different questions about the rollout model.
+
+\paragraph{Functional tumor volume.}
+Functional tumor volume (FTV) is the estimated volume of active enhancing tumor
+tissue on breast MRI. In this work, it is computed from the predicted or
+observed supervoxel feature that tracks active tumor volume. FTV is important
+because it is the patient-level imaging endpoint that most directly represents
+active tumor burden during neoadjuvant treatment. A model can produce a
+reasonable-looking tumor cloud while still predicting too little or too much
+total active tumor. That is why FTV calibration became the central issue after
+the Monte Carlo analysis.
+
+\paragraph{Near-zero T3 MRI FTV diagnostic.}
+The rollout model predicts an imaging trajectory through the available MRI time
+points. The Monte Carlo script reported
+\[
+P(\text{FTV}_{T3} < 0.1\text{ mL}),
+\]
+which answers one imaging question: how often does the simulated T3 MRI tumor
+burden become essentially zero under this threshold? I treat this only as a
+descriptive MRI FTV diagnostic. It is not used as a training target, loss term,
+or primary endpoint in the retraining analysis.
+
+\paragraph{Supervoxels, alive probability, and alive mass.}
+The tumor graph is made of supervoxels, which are small 3D regions of tumor
+tissue. Each supervoxel has a predicted alive probability at the next visit.
+Alive mass is the sum of those probabilities across the graph:
+\[
+\text{alive mass} = \sum_i P(\text{node } i \text{ alive}).
+\]
+The observed alive count is the number of supervoxels that are actually present
+or active at the observed future visit. Alive mass matters because predicted
+FTV is not just the sum of all predicted node volumes; it should be the sum of
+active volume from nodes that remain alive.
+
+\paragraph{FTV residuals and log-volume residuals.}
+The conditional Monte Carlo sampler is residual based. An aggregate FTV
+residual is the difference between observed FTV and deterministic predicted
+FTV:
+\[
+\text{FTV residual} = \text{observed FTV} - \text{predicted FTV}.
+\]
+This residual adjusts the sampled patient-level tumor burden. Log-volume
+residuals are node-level residuals computed in log space:
+\[
+\log(1 + \text{observed node volume}) -
+\log(1 + \text{predicted node volume}).
+\]
+Log space is used because tumor volumes have a long right tail; it avoids
+letting a small number of very large nodes dominate the residual distribution.
+
+\paragraph{Spatial residuals and cloud metrics.}
+The sampler also uses spatial residuals. A global displacement residual shifts
+the whole predicted tumor cloud coherently, while local displacement residuals
+add node-level spatial variation. Spatial quality is evaluated with sliced
+Wasserstein distance (SWD), Chamfer distance, and Dice. SWD and Chamfer measure
+how far the predicted and observed point clouds are from each other; lower is
+better. Dice measures overlap after voxelizing the clouds; higher is better.
+
+\paragraph{Uncertainty metrics.}
+Coverage measures how often the observed FTV lands inside the model's predicted
+uncertainty interval. Raw 90\% coverage uses the Monte Carlo FTV distribution
+directly: the lower endpoint is the 5th percentile and the upper endpoint is the
+95th percentile. If the model is well calibrated, about 90\% of held-out
+observations should fall inside those intervals. Conformal 90\% coverage starts
+from the same raw Monte Carlo interval but then expands it using held-out
+nonconformity scores, which are the observed misses between predicted intervals
+and true FTV values. This gives an empirical correction when the raw Monte Carlo
+intervals are too narrow or systematically off center. Interval width measures
+the size of those uncertainty intervals, so it captures sharpness: narrower
+intervals are better only when coverage remains adequate. The Continuous Ranked
+Probability Score (CRPS) evaluates the entire predicted FTV distribution against
+the observed FTV, not just one interval or one point estimate. Lower CRPS means
+the distribution puts more probability mass near the observed value while still
+remaining appropriately spread out.
+
+\section{Conditional Monte Carlo experiment design}
+
+The Monte Carlo experiment was designed as a stress test of whether a
+deterministic graph rollout could be used as the center of a clinically useful
+uncertainty distribution. The deterministic model gives one predicted future
+tumor graph. The Monte Carlo layer asks a different question: given the errors
+seen in held-out patients, what range of future FTV values and tumor clouds are
+plausible for a new held-out patient?
+
+\paragraph{Base model and held-out protocol.}
+The original experiment used the retained scheduled-sampling consistent rollout
+checkpoints:
+\[
+\texttt{runs/consistent\_forecaster\_v2/v2\_sched\_samp}.
+\]
+Each patient was evaluated with the held-out fold checkpoint for that patient,
+so the checkpoint used for a patient was not trained on that patient. The full
+run included 758 patients, 4,548 rollout records, and 1,164,288 Monte Carlo
+samples, with 256 samples per rollout record.
+
+The same accounting was used in the retrained follow-up. Each retrained model
+produced 4,548 rollout records and 1,164,288 MC samples. Because I ran three
+retrained checkpoints, the follow-up generated 3,492,864 retrained MC samples.
+Including the original baseline run used for comparison, the analysis compared
+4,657,152 MC samples across the baseline and retrained models. The sample count
+comes from
+\[
+758\text{ patients} \times 6\text{ conditioning buckets} \times 256
+\text{ MC draws} = 1{,}164{,}288\text{ samples per model}.
+\]
+
+\paragraph{Conditioning design.}
+The experiment was conditional because it treated each patient's already observed
+visits as known information, then sampled uncertainty only over the future
+visits. This matches the clinical use case: at different points during
+treatment, different amounts of imaging history are available.
+The experiment evaluated three conditioning regimes:
+\begin{itemize}
+    \item T0 observed, then predict T1, T2, and T3.
+    \item T0 and T1 observed, then predict T2 and T3.
+    \item T0, T1, and T2 observed, then predict T3.
+\end{itemize}
+This produced six start-visit/predicted-visit buckets:
+T0$\rightarrow$T1, T0$\rightarrow$T2, T0$\rightarrow$T3,
+T1$\rightarrow$T2, T1$\rightarrow$T3, and T2$\rightarrow$T3. The T3 buckets
+were the most important because T3 is the final pre-surgery MRI time point.
+Because every patient contributes all six buckets, each model has
+$758 \times 6 = 4{,}548$ patient/bucket rollout records before MC sampling.
+
+\paragraph{Calibration residual design.}
+The sampler was residual based. First, the deterministic rollout was run for
+each patient and each conditioning bucket. Then the difference between the
+deterministic prediction and the observed held-out outcome was stored as a
+calibration residual. Residuals were bucketed by start visit and predicted visit,
+because the error distribution is not the same for T0$\rightarrow$T1 as it is
+for T0$\rightarrow$T3. For each target patient, that patient's own residuals
+were excluded from the calibration pool. This made the sampling leave-one-patient
+out with respect to residual information: the patient being evaluated could not
+contribute its own error back into its uncertainty distribution.
+
+For a given target patient and bucket, the patient-level residual candidates are
+therefore the other 757 patients in that same bucket. This exclusion is
+important because it prevents a patient from borrowing its own observed error
+when constructing its MC distribution.
+
+\paragraph{What one Monte Carlo draw did.}
+Each Monte Carlo draw started from the deterministic held-out-fold rollout for
+one target patient and one conditioning bucket. The model weights, observed
+conditioning visits, fold assignment, and deterministic rollout center were not
+randomized. What changed across draws was the residual information resampled
+from other patients in the same bucket. Each draw randomized:
+\begin{enumerate}
+    \item one patient-level calibration residual, sampled with replacement from
+    the non-target patients in the same start-visit/predicted-visit bucket;
+    \item the aggregate FTV residual from that sampled calibration patient,
+    defined as observed FTV minus deterministic predicted FTV;
+    \item the alive-count residual from that sampled calibration patient,
+    defined as observed alive count minus deterministic alive mass;
+    \item the global displacement residual from that sampled calibration
+    patient, which shifts the predicted tumor cloud coherently;
+    \item an alive mask, sampled by Gumbel top-k from the target patient's
+    predicted alive probabilities after the sampled alive-count residual sets
+    the total number of alive nodes;
+    \item local displacement residuals, sampled independently with replacement
+    for each node from the pooled node-level residuals in the same bucket; and
+    \item log-volume residuals, sampled independently with replacement for each
+    node from the pooled node-level volume residuals in the same bucket.
+\end{enumerate}
+
+For each draw, the sampler perturbed positions by adding the sampled global
+shift plus node-level local displacement noise. It perturbed node volumes in
+log space by applying sampled log-volume residuals, then clipped sampled volumes
+to be nonnegative. Sampled FTV was computed as the sum of sampled volumes over
+the sampled alive nodes, plus the sampled aggregate FTV residual, clipped at
+zero. Repeating this 256 times gave an empirical distribution of possible
+future FTV values and tumor-cloud summaries for that patient/bucket rather than
+a single deterministic rollout.
+
+\paragraph{Why the sampler was held fixed.}
+The purpose of the first Monte Carlo experiment was diagnostic, not to tune the
+sampler until the final numbers looked better. I therefore kept the sampling
+procedure fixed and asked whether the uncertainty distribution exposed a
+weakness in the deterministic rollout center. In the retrained follow-up, I
+kept that same sampler fixed again and swapped only the base model. This
+isolated the question I cared about: if the deterministic FTV center is
+corrected, do the Monte Carlo mean, intervals, coverage, CRPS, and spatial
+sample summaries become better calibrated without changing the uncertainty
+machinery itself?
+
+\paragraph{Outputs and evaluation.}
+For every rollout record, the experiment saved the deterministic prediction, the
+Monte Carlo sample distribution, per-patient summaries, and calibration
+summaries. The main FTV outputs were deterministic bias and MAE, Monte Carlo
+mean and median bias/MAE, raw 90\% coverage, conformal 90\% coverage, interval
+width, and Continuous Ranked Probability Score (CRPS). The main graph outputs
+were alive-count error, sliced Wasserstein distance (SWD), Chamfer distance, and
+Dice. This combination was important because a model can have acceptable-looking
+spatial rollouts while still being biologically miscalibrated in total tumor
+burden, or it can improve FTV while degrading the tumor cloud geometry.
+
+\section{What the baseline Monte Carlo simulation revealed}
+
+This section refers to the original conditional MC run on the baseline
+\texttt{v2\_sched\_samp} scheduled-sampling model, before biological
+retraining. It is the diagnostic experiment that motivated the retraining, not
+the final retrained MC comparison. The first important result was systematic
+deterministic FTV underprediction. The T0-to-T3 endpoint was the most important
+case:
+\[
+\text{observed mean T3 FTV} = 24.94\text{ mL}, \qquad
+\text{deterministic mean T3 FTV} = 12.43\text{ mL}.
+\]
+That is a mean signed error of -12.51 mL and an FTV MAE of 12.88 mL. In
+biological terms, the model learned a rollout trajectory that shrank active
+tumor burden too aggressively.
+
+For the baseline model, the residual Monte Carlo correction did not fix the
+problem as a point predictor. It corrected the direction of the bias but
+overcorrected the
+magnitude. For T0-to-T3, the Monte Carlo mean was 31.30 mL against the observed
+mean of 24.94 mL, giving a +6.36 mL bias and a 15.26 mL MC-mean MAE. That told
+me the uncertainty layer was partly compensating for a biased base model rather
+than expressing uncertainty around a well-centered deterministic prediction.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{mc_diagnostic_bias_coverage_width.png}
+    \caption{Conditional Monte Carlo diagnostics for the original
+    scheduled-sampling rollout model. The deterministic rollout was biased low
+    for FTV, while the residual Monte Carlo mean overcorrected high. Raw 90\%
+    FTV intervals under-covered, and split-conformal expansion restored nominal
+    coverage only with wide intervals.}
+    \label{fig:mc-diagnostics}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\small
+\caption{Summary of the original conditional Monte Carlo FTV results. Coverage
+is for 90\% FTV intervals.}
+\label{tab:mc-summary}
+\begin{tabular}{lrrrrrr}
+\toprule
+Bucket & Obs mean & Det mean & MC mean & Det bias & MC bias & Raw / Conf cov. \\
+\midrule
+T0$\rightarrow$T1 & 24.31 & 12.61 & 30.26 & -11.70 & 5.95 & 0.752 / 0.901 \\
+T0$\rightarrow$T2 & 24.75 & 12.16 & 31.30 & -12.58 & 6.56 & 0.793 / 0.901 \\
+T0$\rightarrow$T3 & 24.94 & 12.43 & 31.30 & -12.51 & 6.36 & 0.766 / 0.901 \\
+T1$\rightarrow$T2 & 24.75 & 12.18 & 31.61 & -12.56 & 6.86 & 0.793 / 0.901 \\
+T1$\rightarrow$T3 & 24.94 & 12.20 & 31.85 & -12.74 & 6.90 & 0.764 / 0.901 \\
+T2$\rightarrow$T3 & 24.94 & 12.19 & 31.97 & -12.75 & 7.02 & 0.776 / 0.901 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The second baseline MC result was that later conditioning helped volume scoring,
+but did not fully solve spatial uncertainty. T3 FTV CRPS improved as more
+observed visits were included, from 8.35 for T0-to-T3 to 7.49 for
+T0,T1,T2-to-T3. However, the corresponding SWD worsened from 1.32 mm to
+2.97 mm in the Monte Carlo summaries. This suggested that the sampler was
+capturing some volume behavior but was still weak as a spatial uncertainty
+model.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.78\linewidth]{mc_t3_conditioning_crps_swd.png}
+    \caption{T3 conditional Monte Carlo behavior. Later conditioning improved
+    FTV CRPS, but SWD worsened, showing that volume uncertainty and spatial
+    uncertainty were not improving together.}
+    \label{fig:mc-conditioning}
+\end{figure}
+
+The third baseline MC result was about the near-zero T3 MRI FTV diagnostic. The
+field was computed as
+\[
+P(\text{FTV}_{T3} < 0.1\text{ mL}),
+\]
+which only asks whether the simulated T3 MRI FTV is essentially zero under a
+fixed threshold. In this run the value was almost always near zero, around
+0.007 to 0.009 at T3. This means the threshold is very strict and should be
+treated as a descriptive imaging diagnostic, not as a central response endpoint.
+The threshold was not part of the retraining objective; the retrained models
+learned FTV and alive-burden targets.
+
+The fourth baseline MC result was alive-count miscalibration. The original
+conditional MC experiment had T3 alive-count absolute errors around 39 to 42
+supervoxels. Since alive mass controls which nodes contribute to active tumor
+volume, this was not a cosmetic issue; it directly affected FTV calibration.
+
+\section{Why further exploration was justified}
+
+The Monte Carlo experiment changed the interpretation of the earlier success.
+The model was good enough to demonstrate coherent graph rollout behavior, and
+the conformal wrapper could recover nominal interval coverage. However, the
+center of the uncertainty distribution was biologically miscalibrated.
+
+The main lesson was:
+\[
+\text{good spatial rollout metrics do not guarantee calibrated tumor burden.}
+\]
+The model had learned local graph dynamics, but the clinically important
+endpoint was not directly controlled. If the deterministic rollout is wrong by
+about 12 to 13 mL at T3, downstream Monte Carlo response summaries inherit that
+bias. This motivated a targeted follow-up question:
+
+\begin{quote}
+Can I keep the same consistent graph rollout structure, but add training
+pressure so the rollout is also calibrated for FTV and alive tumor burden?
+\end{quote}
+
+\section{Biological retraining response}
+
+The retraining grid kept the same consistent graph rollout model family, but
+added biological endpoint supervision while retaining the scheduled-sampling
+rollout setup:
+\begin{itemize}
+    \item aggregate FTV loss, penalizing patient-level error in total active
+    tumor burden;
+    \item alive supervision, encouraging correct alive/dead supervoxel
+    behavior and alive mass; and
+    \item the same held-out fold protocol used for the original
+    scheduled-sampling model.
+\end{itemize}
+
+This distinction matters. The MC results reported below evaluate the bio
+retraining checkpoints. Those checkpoints added FTV and alive-burden objectives,
+but they were not the later random-start-plus-horizon rerun. Therefore, this
+analysis isolates whether biological endpoint calibration alone fixes the MC
+calibration problem before changing the rollout-start protocol.
+
+The evaluated variants were:
+\[
+\begin{array}{ll}
+\texttt{bio\_ftv000\_alive002} & \text{alive-only biological retraining},\\
+\texttt{bio\_ftv005\_alive001} & \text{low FTV + low alive},\\
+\texttt{bio\_ftv010\_alive002} & \text{medium FTV + medium alive},\\
+\texttt{bio\_ftv020\_alive005} & \text{high FTV + high alive},\\
+\texttt{bio\_ftv010\_alive000} & \text{FTV-only ablation}.\\
+\end{array}
+\]
+
+The retraining results were much better aligned with the Monte Carlo diagnosis.
+The baseline T0-to-T3 FTV MAE was 12.88 mL. The best retrained candidate,
+\texttt{bio\_ftv020\_alive005}, reduced this to 5.88 mL, a 54.3\% reduction.
+Its mean T3 FTV prediction was 23.21 mL against an observed mean of 24.94 mL,
+leaving a mean signed error of -1.73 mL rather than -12.51 mL.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{bio_retraining_ftv_mae_bias.png}
+    \caption{FTV endpoint calibration after biological retraining. The
+    retrained candidates reduced T0-to-T3 FTV MAE by roughly half and removed
+    most of the systematic underprediction seen in the baseline rollout model.}
+    \label{fig:bio-ftv}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\small
+\caption{T0-to-T3 evaluation of the baseline and biological retraining
+candidates. Lower FTV MAE is better.}
+\label{tab:bio-summary}
+\begin{tabular}{lrrrrr}
+\toprule
+Model & Pred FTV & Obs FTV & Bias & FTV MAE & MAE reduction \\
+\midrule
+\texttt{v2\_sched\_samp} & 12.43 & 24.94 & -12.51 & 12.88 & 0.0\% \\
+\texttt{bio\_ftv000\_alive002} & 24.40 & 24.94 & -0.54 & 6.39 & 50.4\% \\
+\texttt{bio\_ftv005\_alive001} & 23.85 & 24.94 & -1.10 & 6.15 & 52.2\% \\
+\texttt{bio\_ftv010\_alive002} & 23.44 & 24.94 & -1.50 & 5.99 & 53.5\% \\
+\texttt{bio\_ftv020\_alive005} & 23.21 & 24.94 & -1.73 & 5.88 & 54.3\% \\
+\texttt{bio\_ftv010\_alive000} & 23.44 & 24.94 & -1.51 & 5.99 & 53.5\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The paired patient-level comparison gave the same conclusion. For
+\texttt{bio\_ftv020\_alive005}, the mean paired FTV MAE improvement was
+7.00 mL, with an approximate 95\% interval of 6.06 to 7.93 mL, and 79.6\% of
+patients improved.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.82\linewidth]{bio_retraining_paired_ftv_improvement.png}
+    \caption{Patient-level paired FTV MAE improvement relative to the baseline
+    scheduled-sampling rollout model. Positive values mean the retrained model
+    reduced FTV absolute error for the same patient.}
+    \label{fig:paired-improvement}
+\end{figure}
+
+\section{Geometry was preserved}
+
+The important caveat is that the retrained models did not simply become crude
+volume predictors. The spatial metrics stayed essentially flat. For the best
+FTV candidate, mean SWD changed by about 0.003 mm and Chamfer changed by about
+0.006 mm relative to the baseline. Dice changed by less than 0.001.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{bio_retraining_geometry_deltas.png}
+    \caption{Changes in spatial metrics relative to the original
+    scheduled-sampling baseline. The FTV improvement was achieved without a
+    meaningful collapse in spatial rollout quality.}
+    \label{fig:geometry-deltas}
+\end{figure}
+
+Alive-count error also improved dramatically in the retraining evaluations,
+from 58.00 in the baseline simulation evaluation to about 1.70 in the
+biological retraining variants.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.82\linewidth]{bio_retraining_alive_error.png}
+    \caption{Alive-count absolute error in the baseline and retraining
+    evaluations. The improvement is large, but the current ablation grid does
+    not isolate the explicit alive-loss term as the sole driver because the
+    FTV-only ablation also improved.}
+    \label{fig:alive-error}
+\end{figure}
+
+The alive term should be interpreted cautiously. The alive-count
+improvement was identical across the biological retraining variants, including
+the FTV-only ablation. The current evidence strongly supports endpoint-aware
+retraining, especially the aggregate FTV objective, but it does not cleanly
+prove that explicit alive supervision is the mechanism behind the alive-count
+improvement.
+
+\section{Updated conditional Monte Carlo results on retrained models}
+
+After the deterministic retraining analysis, I reran the conditional Monte
+Carlo sampler on three FTV-calibrated checkpoints:
+\texttt{bio\_ftv020\_alive005}, \texttt{bio\_ftv010\_alive000}, and
+\texttt{bio\_ftv010\_alive002}. I kept the sampler unchanged: same residual
+buckets by start and predicted visit, same target-patient exclusion from the
+calibration pool, same Gumbel top-k alive-mask sampling, same split-conformal
+interval calculation, same 758-patient cohort, and 256 MC samples per rollout
+record. This was important because the question was not whether a new sampler
+could be tuned to look better. The question was whether fixing the deterministic
+FTV center would make the existing uncertainty distribution better calibrated.
+
+The answer was yes. For the primary model, \texttt{bio\_ftv020\_alive005},
+T0-to-T3 deterministic bias stayed close to zero at -1.73 mL instead of
+returning to the old -12.51 mL bias. The MC mean no longer had to compensate for
+a badly undercentered base model: T0-to-T3 MC-mean FTV MAE dropped from
+15.26 mL to 7.61 mL. Raw 90\% FTV coverage improved from 0.766 to 0.876 before
+conformal correction, and the conformal 90\% interval width shrank from
+59.51 mL to 27.95 mL. CRPS improved from 8.35 to 5.16, and MC alive-count error
+fell from 40.78 to 2.69 supervoxels.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{mc_bio_retrained_t0t3_summary.png}
+    \caption{T0-to-T3 conditional MC comparison between the original
+    scheduled-sampling baseline and the three FTV-calibrated retrained models.
+    The retrained models reduce MC-mean FTV error, improve raw 90\% coverage,
+    shrink conformal intervals, and greatly reduce alive-count error.}
+    \label{fig:mc-bio-t0t3}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\small
+\caption{T0-to-T3 conditional MC comparison. Coverage is for raw 90\% FTV
+intervals before conformal expansion. Width is the conformal 90\% FTV interval
+width.}
+\label{tab:mc-bio-t0t3}
+\begin{tabular}{lrrrrrrr}
+\toprule
+Model & Det bias & Det MAE & MC bias & MC MAE & Raw cov. & Width & Alive err. \\
+\midrule
+\texttt{v2\_sched\_samp} & -12.51 & 12.88 & 6.36 & 15.26 & 0.766 & 59.51 & 40.78 \\
+\texttt{bio\_ftv020\_alive005} & -1.73 & 5.88 & 1.93 & 7.61 & 0.876 & 27.95 & 2.69 \\
+\texttt{bio\_ftv010\_alive000} & -1.51 & 5.99 & 1.14 & 7.31 & 0.875 & 26.92 & 7.00 \\
+\texttt{bio\_ftv010\_alive002} & -1.50 & 5.99 & 1.76 & 7.53 & 0.883 & 29.14 & 2.70 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The improvement also held across the three T3 conditioning buckets. For
+\texttt{bio\_ftv020\_alive005}, MC-mean FTV MAE was 7.61 mL for T0-to-T3,
+7.18 mL for T1-to-T3, and 5.80 mL for T2-to-T3. The corresponding conformal
+widths were 27.95 mL, 29.61 mL, and 24.19 mL, all far below the old baseline
+range of about 59 to 60 mL. This matters because the MC improvement was not
+only a single T0-to-T3 artifact; it persisted when later observed imaging visits
+were used as conditioning information.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{mc_bio_retrained_t3_buckets.png}
+    \caption{T3 conditional MC metrics across available imaging history. The
+    FTV-calibrated retrained models reduce MC-mean FTV MAE, conformal interval
+    width, and CRPS across T0-to-T3, T1-to-T3, and T2-to-T3 conditioning.}
+    \label{fig:mc-bio-t3-buckets}
+\end{figure}
+
+\subsection{Patient-level uncertainty visualization}
+
+The aggregate metrics are necessary, but they are not enough by themselves. The
+new patient-level plots show what the MC distribution is doing for individual
+rollouts. In these plots, the black curve is the observed FTV trajectory, the
+gray curve and band show the original baseline MC mean plus or minus one
+standard deviation, and the green curve and band show the retrained primary
+model. These are MRI FTV uncertainty trajectories from the T0-conditioned
+rollout.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{mc_patient_trajectory_mean_std_examples.png}
+    \caption{Example patient-level T0-to-T3 MC trajectories. The retrained
+    primary model generally shifts the MC mean closer to the observed FTV path
+    and reduces the width of the one-standard-deviation band. The examples were
+    selected to show low, median, high, and strongly improved T3 cases, so the
+    figure is illustrative rather than a replacement for cohort-level
+    calibration metrics.}
+    \label{fig:mc-patient-trajectories}
+\end{figure}
+
+The cohort-wide sorted plot gives the same comparison for all 758 patients in
+the T0-to-T3 setting. Patients are ordered by observed T3 FTV, so this figure
+shows whether the MC distribution follows the empirical endpoint distribution
+across low-, moderate-, and high-volume cases. The baseline MC distribution has
+a visibly wide band and often sits high after residual correction. The retrained
+model is more centered and sharper. That interpretation is supported by the
+quantitative results: raw coverage improved from 0.766 to 0.876 while the
+conformal width shrank from 59.51 mL to 27.95 mL. In other words, the narrower
+band is not just overconfidence; it is paired with better empirical coverage
+and lower CRPS.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{mc_t0t3_patient_uncertainty_sorted.png}
+    \caption{Cohort-wide T0-to-T3 MC uncertainty bands, with patients sorted by
+    observed T3 FTV. The retrained primary model has a narrower and better
+    centered MC distribution across the cohort, while the baseline distribution
+    remains broad and shifted upward after residual correction.}
+    \label{fig:mc-sorted-patient-uncertainty}
+\end{figure}
+
+The standard-deviation summary isolates uncertainty width directly. From T0
+conditioning, the baseline mean MC FTV standard deviation increased from
+24.71 mL at T1 to 27.56 mL at T3. The retrained primary model had substantially
+smaller standard deviations: 12.60 mL at T1, 15.33 mL at T2, and 16.10 mL at
+T3. This is exactly the expected pattern if the old MC layer was compensating
+for a biased deterministic center. Once the deterministic center was corrected,
+the residual distribution no longer had to spread as widely to cover the
+observed endpoint.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.88\linewidth]{mc_t0_to_t3_std_distribution.png}
+    \caption{Patient-level MC FTV standard deviation by predicted visit from
+    T0 conditioning. The retrained primary model has consistently lower
+    patient-level uncertainty width than the original baseline, especially at
+    the final T3 endpoint.}
+    \label{fig:mc-std-distribution}
+\end{figure}
+
+All three retrained candidates passed the prespecified T0-to-T3 decision gates.
+The FTV-only ablation had the lowest T0-to-T3 MC-mean FTV MAE, 7.31 mL, and the
+narrowest conformal interval width, 26.92 mL. However, its MC alive-count error
+was 7.00 supervoxels, compared with 2.69 for
+\texttt{bio\_ftv020\_alive005} and 2.70 for
+\texttt{bio\_ftv010\_alive002}. I therefore interpret the FTV-only ablation as
+evidence that aggregate FTV supervision explains much of the volume calibration
+gain, but I would still keep \texttt{bio\_ftv020\_alive005} as the primary
+balanced candidate because it combines strong FTV calibration with much better
+alive-count calibration.
+
+The main residual caution is subgroup drift. For the primary model at
+T0-to-T3, the HR-/HER2+ subgroup remained the hardest subgroup: deterministic
+FTV MAE was 8.65 mL, MC-mean FTV MAE was 10.78 mL, raw coverage was 0.842, and
+CRPS was 8.07. The near-zero T3 MRI FTV diagnostic remains an
+imaging-threshold summary, not a primary endpoint in this analysis.
+
+\section{Progress interpretation}
+
+The concise interpretation is:
+
+\begin{quote}
+I had a model that worked well as a rollout model, but when I used it as the
+center of a conditional Monte Carlo simulator, I found a systematic biological
+calibration problem. It underpredicted T3 FTV by about 12.5 mL. The residual MC
+layer could recover nominal coverage after conformal expansion, but the
+intervals were wide and the MC mean overcorrected. That told me the uncertainty
+method was compensating for a biased base model.
+
+Because FTV is the key imaging endpoint for tumor burden, I retrained the same
+consistent graph model with aggregate FTV and alive-burden losses. The best
+retrained model cut T0-to-T3 FTV MAE from 12.88 mL to 5.88 mL while preserving
+the spatial metrics. When I reran the same conditional MC sampler on the
+retrained models, the uncertainty distribution also improved: the primary model
+cut T0-to-T3 MC-mean FTV MAE from 15.26 mL to 7.61 mL, increased raw 90\%
+coverage from 0.766 to 0.876, and reduced conformal interval width from
+59.51 mL to 27.95 mL. The follow-up was therefore not a random model tweak; it
+was a targeted response to a failure mode revealed by the Monte Carlo
+simulation, and the completed MC rerun shows that correcting the deterministic
+FTV center materially improved uncertainty calibration.
+\end{quote}
+
+\section{Current conclusion and next step}
+
+The current conclusion is that \texttt{bio\_ftv020\_alive005} is the best
+balanced candidate from this phase. The FTV-only ablation slightly wins on
+T0-to-T3 MC-mean FTV MAE and conformal width, but the high-FTV/high-alive model
+has much better alive-count calibration while still passing every FTV and
+uncertainty gate. That balance matters because the model is supposed to remain a
+graph rollout model, not only a scalar FTV predictor. The patient-level
+trajectory plots make the same point visually: the retrained model produces a
+more credible FTV uncertainty distribution because it is simultaneously closer
+to the observed trajectory, narrower, better covered, and lower by CRPS.
+
+The next methodological decision is whether the corrected random-start-plus-
+horizon model family should replace this scheduled-sampling bio grid as the
+final architecture. If so, the same MC experiment should be repeated on that
+checkpoint family, using the same cohort and sampler, so that the comparison is
+not confounded by changes in the uncertainty machinery. Separately, the
+subgroup results should be kept visible: HR-/HER2+ patients remain the hardest
+group in the primary T0-to-T3 MC run, so that subgroup needs targeted error
+review before making strong claims about uniform calibration.
+
+The current MC output supports calibrated T3 MRI FTV uncertainty. Any separate
+clinical outcome model should be treated as a distinct prediction problem built
+from appropriate outcome labels and covariates, rather than folded into this
+rollout uncertainty analysis.
+
+\end{document}
