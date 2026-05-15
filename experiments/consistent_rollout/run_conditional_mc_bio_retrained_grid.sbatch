@@ -54,9 +54,10 @@ INTERVAL="${INTERVAL:-0.90}"
 SEED="${SEED:-42}"
 DEVICE="${DEVICE:-auto}"
 PATIENT_LIST="${PATIENT_LIST:-}"
+RESIDUAL_STRATIFY_BY="${RESIDUAL_STRATIFY_BY:-none}"
 
 echo "[cg-bio-mc] tag=${TAG} start=$(date -Iseconds)"
-echo "[cg-bio-mc] runs=${RUNS_DIR} graphs=${GRAPHS_ROOT} out=${OUT_DIR} n_mc=${N_MC} metric_draws=${METRIC_DRAWS}"
+echo "[cg-bio-mc] runs=${RUNS_DIR} graphs=${GRAPHS_ROOT} out=${OUT_DIR} n_mc=${N_MC} metric_draws=${METRIC_DRAWS} residual_stratify_by=${RESIDUAL_STRATIFY_BY}"
 
 CMD=(
   "$PY" experiments/consistent_rollout/run_conditional_mc.py
@@ -71,6 +72,7 @@ CMD=(
   --patient-limit "$PATIENT_LIMIT"
   --eps-pcr "$EPS_PCR"
   --interval "$INTERVAL"
+  --residual-stratify-by "$RESIDUAL_STRATIFY_BY"
   --seed "$SEED"
   --device "$DEVICE"
 )

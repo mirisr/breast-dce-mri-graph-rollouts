@@ -38,6 +38,7 @@ if str(NB_ISPY2_DIR) not in sys.path:
     sys.path.insert(0, str(NB_ISPY2_DIR))
 
 import consistent_twin_lib as lib  # noqa: E402
+from experiments.stage1_forecaster.edge_modes import build_history_graph  # noqa: E402
 from lsgc.metrics import (  # noqa: E402
     chamfer_position,
     crps_empirical,
@@ -135,62 +136,31 @@ def _bucket_key(start_idx: int, pred_idx: int) -> tuple[int, int]:
     return int(start_idx), int(pred_idx)
 
 
+def _residual_stratum(r: MeanRolloutRecord, stratify_by: str) -> str:
+    if stratify_by == "none":
+        return "__all__"
+    value = getattr(r, stratify_by)
+    return str(value) if value is not None and pd.notna(value) else "__missing__"
+
+
+def _residual_bucket_key(start_idx: int, pred_idx: int, stratum: str) -> tuple[int, int, str]:
+    return int(start_idx), int(pred_idx), str(stratum)
+
+
 def _experiment_checkpoint(runs_dir: Path, fold: int, checkpoint_name: str) -> Path:
     return runs_dir / f"fold{int(fold)}" / checkpoint_name
 
 
-def _load_models_by_fold(runs_dir: Path, checkpoint_name: str) -> dict[int, tuple[Any, torch.Tensor, torch.Tensor]]:
-    models: dict[int, tuple[Any, torch.Tensor, torch.Tensor]] = {}
+def _load_models_by_fold(runs_dir: Path, checkpoint_name: str) -> dict[int, tuple[Any, torch.Tensor, torch.Tensor, dict[str, Any]]]:
+    models: dict[int, tuple[Any, torch.Tensor, torch.Tensor, dict[str, Any]]] = {}
     for fold in range(5):
         ckpt = _experiment_checkpoint(runs_dir, fold, checkpoint_name)
         if not ckpt.is_file():
             raise FileNotFoundError(f"Missing consistent rollout checkpoint: {ckpt}")
-        models[fold] = lib.load_model(ckpt)
+        model, mean, std = lib.load_model(ckpt)
+        raw = torch.load(ckpt, map_location="cpu", weights_only=False)
+        models[fold] = (model, mean, std, dict(raw.get("config", {})))
     return models
-
-
-def _spatial_knn_edges_device(pos: torch.Tensor, k: int = 8) -> torch.Tensor:
-    d = torch.cdist(pos, pos)
-    d.fill_diagonal_(float("inf"))
-    k_eff = min(k, pos.shape[0] - 1)
-    if k_eff <= 0:
-        return torch.zeros((2, 0), dtype=torch.long, device=pos.device)
-    _, idx = torch.topk(d, k=k_eff, largest=False, dim=1)
-    src = torch.arange(pos.shape[0], device=pos.device).unsqueeze(1).expand_as(idx).reshape(-1)
-    dst = idx.reshape(-1)
-    ei = torch.stack([torch.cat([src, dst]), torch.cat([dst, src])], dim=0)
-    return ei.unique(dim=1)
-
-
-def _build_history_edges_device(history_pos: list[torch.Tensor], k_spatial: int = 8) -> torch.Tensor:
-    all_src: list[torch.Tensor] = []
-    all_dst: list[torch.Tensor] = []
-    offsets: list[int] = []
-    cur = 0
-    for pos in history_pos:
-        offsets.append(cur)
-        cur += int(pos.shape[0])
-    offsets.append(cur)
-
-    for v, pos in enumerate(history_pos):
-        off = offsets[v]
-        n_v = int(pos.shape[0])
-        if n_v > 1:
-            ei_v = _spatial_knn_edges_device(pos, k=k_spatial)
-            if ei_v.numel():
-                all_src.append(ei_v[0] + off)
-                all_dst.append(ei_v[1] + off)
-        if v < len(history_pos) - 1:
-            n_next = int(history_pos[v + 1].shape[0])
-            n_link = min(n_v, n_next)
-            if n_link > 0:
-                src_t = torch.arange(n_link, device=pos.device) + off
-                dst_t = torch.arange(n_link, device=pos.device) + offsets[v + 1]
-                all_src += [src_t, dst_t]
-                all_dst += [dst_t, src_t]
-    if not all_src:
-        return torch.zeros((2, 0), dtype=torch.long, device=history_pos[0].device)
-    return torch.stack([torch.cat(all_src), torch.cat(all_dst)], dim=0).long()
 
 
 @torch.no_grad()
@@ -203,6 +173,8 @@ def rollout_from_visit_device(
     start_visit: int,
     device: torch.device,
     k_spatial: int = 8,
+    edge_mode: str = "full",
+    edge_attr_mode: str = "none",
 ) -> list[dict[str, Any]]:
     """Device-aware version of ``consistent_twin_lib.rollout_from_visit``."""
     if start_visit < 0 or start_visit >= len(VISITS) - 1:
@@ -233,8 +205,14 @@ def rollout_from_visit_device(
         x_cat = torch.cat(history_x, dim=0)
         pos_cat = torch.cat(history_pos, dim=0)
         t_cat = torch.cat(history_t, dim=0)
-        edge_index = _build_history_edges_device(history_pos, k_spatial=k_spatial)
-        out = model(x_cat, pos_cat, t_cat, edge_index)
+        edge_index, edge_attr = build_history_graph(
+            history_pos,
+            history_x,
+            k_spatial=k_spatial,
+            edge_mode=edge_mode,
+            edge_attr_mode=edge_attr_mode,
+        )
+        out = model(x_cat, pos_cat, t_cat, edge_index, edge_attr=edge_attr)
 
         n_last = int(history_x[-1].shape[0])
         sl_last = slice(x_cat.shape[0] - n_last, x_cat.shape[0])
@@ -314,7 +292,7 @@ def _load_consistent_graph(pid: str, graphs_root: Path) -> dict:
 def build_mean_rollout_records(
     *,
     patient_folds: list[tuple[str, int]],
-    models_by_fold: dict[int, tuple[Any, torch.Tensor, torch.Tensor]],
+    models_by_fold: dict[int, tuple[Any, torch.Tensor, torch.Tensor, dict[str, Any]]],
     graphs_root: Path,
     cohort_meta: dict[str, dict[str, Any]],
     start_visits: tuple[int, ...],
@@ -323,14 +301,25 @@ def build_mean_rollout_records(
 ) -> list[MeanRolloutRecord]:
     records: list[MeanRolloutRecord] = []
     for i, (pid, fold) in enumerate(patient_folds, 1):
-        model, mean, std = models_by_fold[int(fold)]
+        model, mean, std, cfg = models_by_fold[int(fold)]
+        k_spatial = int(cfg.get("k_spatial", 8))
+        edge_mode = str(cfg.get("edge_mode", "full"))
+        edge_attr_mode = str(cfg.get("edge_attr_mode", "none"))
         g = _load_consistent_graph(pid, graphs_root)
         ftv_t0 = _observed_ftv_t0(g, volume_idx)
         meta = cohort_meta.get(pid, {})
         for start_idx in start_visits:
             try:
                 steps = rollout_from_visit_device(
-                    model, mean, std, g, start_visit=int(start_idx), device=device
+                    model,
+                    mean,
+                    std,
+                    g,
+                    start_visit=int(start_idx),
+                    device=device,
+                    k_spatial=k_spatial,
+                    edge_mode=edge_mode,
+                    edge_attr_mode=edge_attr_mode,
                 )
             except Exception as exc:
                 print(f"[warn] {pid} fold={fold} start={start_idx}: rollout failed: {exc}", flush=True)
@@ -405,10 +394,14 @@ def residual_from_record(r: MeanRolloutRecord, volume_idx: int) -> ResidualRecor
 def build_residual_buckets(
     records: list[MeanRolloutRecord],
     volume_idx: int,
-) -> dict[tuple[int, int], list[ResidualRecord]]:
-    buckets: dict[tuple[int, int], list[ResidualRecord]] = {}
+    stratify_by: str = "none",
+) -> dict[tuple[int, int, str], list[ResidualRecord]]:
+    buckets: dict[tuple[int, int, str], list[ResidualRecord]] = {}
     for r in records:
-        buckets.setdefault(_bucket_key(r.start_idx, r.pred_idx), []).append(residual_from_record(r, volume_idx))
+        stratum = _residual_stratum(r, stratify_by)
+        buckets.setdefault(_residual_bucket_key(r.start_idx, r.pred_idx, stratum), []).append(
+            residual_from_record(r, volume_idx)
+        )
     return buckets
 
 
@@ -464,6 +457,8 @@ def simulate_record(
     rng: np.random.Generator,
     eps_pcr: float,
     volume_idx: int,
+    residual_stratify_by: str = "none",
+    residual_stratum: str = "__all__",
     metric_draws: int = 0,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     patient_resids, local_resids, logvol_resids = candidate_residuals(bucket, r.patient_id)
@@ -532,6 +527,8 @@ def simulate_record(
                 "predicted_visit": r.predicted_visit,
                 "start_idx": r.start_idx,
                 "pred_idx": r.pred_idx,
+                "residual_stratify_by": residual_stratify_by,
+                "residual_stratum": residual_stratum,
                 "rollout_depth": r.rollout_depth,
                 "draw": draw,
                 "n_calibration_patients": n_candidates,
@@ -557,6 +554,8 @@ def simulate_record(
         "predicted_visit": r.predicted_visit,
         "start_idx": r.start_idx,
         "pred_idx": r.pred_idx,
+        "residual_stratify_by": residual_stratify_by,
+        "residual_stratum": residual_stratum,
         "rollout_depth": r.rollout_depth,
         "n_mc": int(arr.size),
         "n_supervoxels": r.n_sv,
@@ -584,7 +583,7 @@ def add_conformal_intervals(
     summaries: list[dict[str, Any]],
     alpha: float,
 ) -> list[dict[str, Any]]:
-    by_bucket: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    by_bucket: dict[tuple[int, int, str], list[dict[str, Any]]] = {}
     for row in summaries:
         score = max(
             float(row["ftv_raw_p05_ml"]) - float(row["obs_ftv_ml"]),
@@ -592,12 +591,14 @@ def add_conformal_intervals(
             0.0,
         )
         row["ftv_raw_nonconformity_ml"] = _safe_float(score)
-        by_bucket.setdefault(_bucket_key(row["start_idx"], row["pred_idx"]), []).append(row)
+        stratum = str(row.get("residual_stratum", "__all__"))
+        by_bucket.setdefault(_residual_bucket_key(row["start_idx"], row["pred_idx"], stratum), []).append(row)
 
     for row in summaries:
+        stratum = str(row.get("residual_stratum", "__all__"))
         peers = [
             x["ftv_raw_nonconformity_ml"]
-            for x in by_bucket[_bucket_key(row["start_idx"], row["pred_idx"])]
+            for x in by_bucket[_residual_bucket_key(row["start_idx"], row["pred_idx"], stratum)]
             if x["patient_id"] != row["patient_id"]
         ]
         q = conformal_correction(peers, alpha=alpha)
@@ -667,11 +668,11 @@ def aggregate_summary(per_patient: pd.DataFrame) -> dict[str, Any]:
 
 
 def calibration_summary(
-    residual_buckets: dict[tuple[int, int], list[ResidualRecord]],
+    residual_buckets: dict[tuple[int, int, str], list[ResidualRecord]],
     per_patient: pd.DataFrame,
 ) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
-    for (start_idx, pred_idx), bucket in sorted(residual_buckets.items()):
+    for (start_idx, pred_idx, stratum), bucket in sorted(residual_buckets.items()):
         local_n = int(sum(r.local_disp_resids.shape[0] for r in bucket))
         logv_n = int(sum(r.log_volume_resids.shape[0] for r in bucket))
         ftv_resids = np.asarray([r.ftv_resid for r in bucket], dtype=np.float64)
@@ -679,11 +680,13 @@ def calibration_summary(
         grp = per_patient[
             (per_patient["start_idx"] == start_idx)
             & (per_patient["pred_idx"] == pred_idx)
+            & (per_patient["residual_stratum"] == stratum)
         ]
         rows.append(
             {
                 "start_visit": VISITS[start_idx],
                 "predicted_visit": VISITS[pred_idx],
+                "residual_stratum": stratum,
                 "n_records": int(len(bucket)),
                 "n_unique_patients": int(len({r.patient_id for r in bucket})),
                 "n_local_disp_residuals": local_n,
@@ -725,6 +728,12 @@ def main() -> int:
     ap.add_argument("--eps-pcr", type=float, default=0.1)
     ap.add_argument("--interval", type=float, default=0.90)
     ap.add_argument("--volume-idx", type=int, default=1)
+    ap.add_argument(
+        "--residual-stratify-by",
+        default="none",
+        choices=("none", "subtype", "collection"),
+        help="Condition residual and conformal pools on this metadata field. Default preserves full-cohort pools.",
+    )
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--device", default="auto", choices=("auto", "cpu", "cuda"),
                     help="Use cuda on Cradle by default when available; cpu for local smoke tests.")
@@ -737,6 +746,7 @@ def main() -> int:
     alpha = 1.0 - float(args.interval)
     if not (0.0 < alpha < 1.0):
         raise ValueError("--interval must be between 0 and 1")
+    residual_stratify_by = str(args.residual_stratify_by)
 
     folds = pd.read_parquet(args.folds)
     cohort = pd.read_parquet(args.cohort)
@@ -750,7 +760,8 @@ def main() -> int:
 
     print(
         f"[conditional-mc] patients={len(patient_folds)} n_mc={args.n_mc} "
-        f"runs={args.runs_dir} graphs={args.graphs_root} device={device}",
+        f"runs={args.runs_dir} graphs={args.graphs_root} "
+        f"residual_stratify_by={residual_stratify_by} device={device}",
         flush=True,
     )
     models_by_fold = _load_models_by_fold(args.runs_dir, args.checkpoint_name)
@@ -766,12 +777,17 @@ def main() -> int:
     if not records:
         raise RuntimeError("No rollout records generated.")
 
-    residual_buckets = build_residual_buckets(records, volume_idx=int(args.volume_idx))
+    residual_buckets = build_residual_buckets(
+        records,
+        volume_idx=int(args.volume_idx),
+        stratify_by=residual_stratify_by,
+    )
     sample_rows: list[dict[str, Any]] = []
     summary_rows: list[dict[str, Any]] = []
     rng = np.random.default_rng(int(args.seed))
     for i, r in enumerate(records, 1):
-        bucket = residual_buckets[_bucket_key(r.start_idx, r.pred_idx)]
+        stratum = _residual_stratum(r, residual_stratify_by)
+        bucket = residual_buckets[_residual_bucket_key(r.start_idx, r.pred_idx, stratum)]
         rows, summary = simulate_record(
             r,
             bucket,
@@ -779,6 +795,8 @@ def main() -> int:
             rng=rng,
             eps_pcr=float(args.eps_pcr),
             volume_idx=int(args.volume_idx),
+            residual_stratify_by=residual_stratify_by,
+            residual_stratum=stratum,
             metric_draws=int(args.metric_draws),
         )
         sample_rows.extend(rows)
@@ -801,6 +819,7 @@ def main() -> int:
         "n_mc": int(args.n_mc),
         "metric_draws": int(args.metric_draws),
         "start_visits": [VISITS[i] for i in start_visits],
+        "residual_stratify_by": residual_stratify_by,
         "eps_pcr": float(args.eps_pcr),
         "interval": float(args.interval),
         "seed": int(args.seed),

@@ -43,6 +43,10 @@ _REPO_ROOT = _find_repo_root(_HERE)
 import sys as _sys
 if str(_REPO_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_REPO_ROOT))
+from experiments.stage1_forecaster.edge_modes import (
+    build_history_graph as _dynamic_history_graph,
+    edge_attr_dim as _edge_attr_dim,
+)
 
 VIZ_ROOT   = _HERE / "viz_data_consistent"
 _FIG_CACHE = VIZ_ROOT / "_fig_cache"
@@ -53,7 +57,7 @@ def show_fig(fig: go.Figure, name: str = "fig", height: int = None,
     """Render figure as inline PNG (static, always-renders) plus link to
     interactive HTML version.
 
-    Static images are reliable in notebook environments, and a
+    Static images are 100% reliable in Cursor's Jupyter environment, and a
     parallel interactive HTML version is saved to disk so users can open the
     full Plotly interaction (rotate, zoom, hover) in a browser tab.
     """
@@ -280,7 +284,7 @@ def load_model(path: Path = MODEL_PATH):
         feat_out_dim=in_ch,
         use_delta_t=True,
         use_edge_gating=True,
-        edge_attr_dim=0,
+        edge_attr_dim=_edge_attr_dim(cfg.get("edge_attr_mode", "none")),
     )
     model.load_state_dict(ck["state_dict"])
     model.eval()
@@ -374,47 +378,49 @@ def build_edges(g: dict) -> torch.Tensor:
     return torch.stack([torch.cat(all_src), torch.cat(all_dst)], dim=0).long()
 
 
-def _build_history_edges(history_pos: list[torch.Tensor], k_spatial: int = 8) -> torch.Tensor:
-    """Build rollout graph edges from visit history with identity temporal links."""
-    all_src: list[torch.Tensor] = []
-    all_dst: list[torch.Tensor] = []
-    offsets = []
-    cur = 0
-    for pos in history_pos:
-        offsets.append(cur)
-        cur += int(pos.shape[0])
-    offsets.append(cur)
-
-    for v, pos in enumerate(history_pos):
-        off = offsets[v]
-        n_v = int(pos.shape[0])
-        if n_v > 1:
-            ei_v = spatial_knn_edges(pos, k=k_spatial)
-            all_src.append(ei_v[0] + off)
-            all_dst.append(ei_v[1] + off)
-        if v < len(history_pos) - 1:
-            n_next = int(history_pos[v + 1].shape[0])
-            n_link = min(n_v, n_next)
-            if n_link > 0:
-                src_t = torch.arange(n_link) + off
-                dst_t = torch.arange(n_link) + offsets[v + 1]
-                all_src += [src_t, dst_t]
-                all_dst += [dst_t, src_t]
-    if not all_src:
-        return torch.zeros((2, 0), dtype=torch.long)
-    return torch.stack([torch.cat(all_src), torch.cat(all_dst)], dim=0).long()
+def _build_history_graph(
+    history_pos: list[torch.Tensor],
+    history_x: list[torch.Tensor] | None = None,
+    k_spatial: int = 8,
+    edge_mode: str = "full",
+    edge_attr_mode: str = "none",
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    """Build rollout graph edges and optional attributes from visit history."""
+    return _dynamic_history_graph(
+        history_pos,
+        history_x,
+        k_spatial=k_spatial,
+        edge_mode=edge_mode,
+        edge_attr_mode=edge_attr_mode,
+    )
 
 
 @torch.no_grad()
-def run_inference(model, mean, std, g: dict) -> dict:
+def run_inference(
+    model,
+    mean,
+    std,
+    g: dict,
+    k_spatial: int = 8,
+    edge_mode: str = "full",
+    edge_attr_mode: str = "none",
+) -> dict:
     """Return per-visit, per-node delta_pos predictions (centroid-relative mm)."""
     x   = (g["x"].float() - mean) / std
     pos = g["pos"].float()
     t   = g["t"].float()
-    ei  = build_edges(g)
-    out = model(x, pos, t, ei)
-
     off = g["visit_offsets"].tolist()
+    history_x = [x[int(off[v]): int(off[v + 1])] for v in range(len(off) - 1)]
+    history_pos = [pos[int(off[v]): int(off[v + 1])] for v in range(len(off) - 1)]
+    ei, edge_attr = _build_history_graph(
+        history_pos,
+        history_x,
+        k_spatial=k_spatial,
+        edge_mode=edge_mode,
+        edge_attr_mode=edge_attr_mode,
+    )
+    out = model(x, pos, t, ei, edge_attr=edge_attr)
+
     N   = g["n_supervoxels"]
     result = {}
     for v, vid in enumerate(VISITS[:-1]):
@@ -446,6 +452,8 @@ def rollout_from_visit(
     g: dict,
     start_visit: int = 0,
     k_spatial: int = 8,
+    edge_mode: str = "full",
+    edge_attr_mode: str = "none",
 ) -> list[dict[str, Any]]:
     """Autoregressive rollout from a chosen observed visit on consistent graphs.
 
@@ -477,8 +485,14 @@ def rollout_from_visit(
         x_cat = torch.cat(history_x, dim=0)
         pos_cat = torch.cat(history_pos, dim=0)
         t_cat = torch.cat(history_t, dim=0)
-        ei = _build_history_edges(history_pos, k_spatial=k_spatial)
-        out = model(x_cat, pos_cat, t_cat, ei)
+        ei, edge_attr = _build_history_graph(
+            history_pos,
+            history_x,
+            k_spatial=k_spatial,
+            edge_mode=edge_mode,
+            edge_attr_mode=edge_attr_mode,
+        )
+        out = model(x_cat, pos_cat, t_cat, ei, edge_attr=edge_attr)
 
         n_last = int(history_x[-1].shape[0])
         sl_last = slice(x_cat.shape[0] - n_last, x_cat.shape[0])

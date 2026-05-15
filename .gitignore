@@ -44,8 +44,9 @@ data/**/segmentations/
 experiments/**/logs/
 experiments/**/runs/
 
-# Keep derived graph tensors, model checkpoints, and parquet outputs in this
-# private repository unless this repo is converted to a public release.
+# Keep derived graph tensors, model checkpoints, and parquet outputs available
+# in this private working repository. Revisit these exceptions before converting
+# the repository to a public release.
 !data/ispy2/graphs_consistent/*.pt
 !models/**/*.pt
 !results/**/*.parquet

@@ -40,7 +40,9 @@ def _list_folds(runs_dir: Path) -> list[Path]:
 def _load_checkpoint(path: Path):
     if not path.is_file():
         raise FileNotFoundError(path)
-    return lib.load_model(path)
+    model, mean, std = lib.load_model(path)
+    raw = torch.load(path, map_location="cpu", weights_only=False)
+    return model, mean, std, dict(raw.get("config", {}))
 
 
 def _patient_ids_for_fold(
@@ -208,7 +210,10 @@ def main() -> int:
         if not ckpt_path.is_file():
             print(f"skip {fold_dir}: missing {args.checkpoint_name}")
             continue
-        model, mean, std = _load_checkpoint(ckpt_path)
+        model, mean, std, cfg = _load_checkpoint(ckpt_path)
+        k_spatial = int(cfg.get("k_spatial", 8))
+        edge_mode = str(cfg.get("edge_mode", "full"))
+        edge_attr_mode = str(cfg.get("edge_attr_mode", "none"))
         patient_ids = _patient_ids_for_fold(fold_dir, folds_df, args.patient_list)
         if args.limit > 0:
             patient_ids = patient_ids[: args.limit]
@@ -233,10 +238,27 @@ def main() -> int:
                 }
 
             try:
-                infer = lib.run_inference(model, mean, std, g)
+                infer = lib.run_inference(
+                    model,
+                    mean,
+                    std,
+                    g,
+                    k_spatial=k_spatial,
+                    edge_mode=edge_mode,
+                    edge_attr_mode=edge_attr_mode,
+                )
                 fold_rows.extend(_teacher_forced_rows(pid, g, infer, cohort_row))
                 for start_visit in (0, 1, 2):
-                    rollout = lib.rollout_from_visit(model, mean, std, g, start_visit=start_visit)
+                    rollout = lib.rollout_from_visit(
+                        model,
+                        mean,
+                        std,
+                        g,
+                        start_visit=start_visit,
+                        k_spatial=k_spatial,
+                        edge_mode=edge_mode,
+                        edge_attr_mode=edge_attr_mode,
+                    )
                     fold_rows.extend(_rollout_rows(pid, g, rollout, start_visit, cohort_row))
             except Exception as exc:
                 print(f"{pid}: eval error {exc}")

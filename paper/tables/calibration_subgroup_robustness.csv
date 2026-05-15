@@ -1,0 +1,8 @@
+check,stratum,n,retained_mc_mean_ftv_mae_ml,mae_reduction_ml,mae_reduction_ci95_low,mae_reduction_ci95_high,retained_raw_coverage,retained_conformal_coverage,retained_conformal_width_ml,retained_crps,note
+horizon,T0->T3,758,5.564438118856992,9.697501890045901,8.868103304597238,10.586042471553094,0.8773087071240105,0.9010554089709762,22.37626217460157,3.997603355081031,Final-visit conditioning horizon from the full-cohort MC rollout.
+horizon,T1->T3,758,5.904416062107043,8.970994989047409,8.219591836437559,9.760245505631369,0.8654353562005277,0.9010554089709762,25.60607172188301,4.184661091587692,Final-visit conditioning horizon from the full-cohort MC rollout.
+horizon,T2->T3,758,5.67527320225229,8.126843689616448,7.428726350666323,8.828871174321263,0.8601583113456465,0.9010554089709762,24.4510508561779,3.943698060603129,Final-visit conditioning horizon from the full-cohort MC rollout.
+subtype_post_hoc,HR+/HER2+,128,4.90291977454915,8.755740007573387,7.507790672392929,9.907706889641673,0.90625,,,,Post hoc T0->T3 subtype stratum; residual and conformal calibration were not refit by subgroup.
+subtype_post_hoc,HR+/HER2-,312,5.235347252420384,9.555883848639404,8.365248984230554,10.968601952079306,0.8685897435897436,,,,Post hoc T0->T3 subtype stratum; residual and conformal calibration were not refit by subgroup.
+subtype_post_hoc,HR-/HER2+,57,7.51869337208555,10.820003761987024,7.10720972060503,16.11032721228164,0.9122807017543859,,,,Post hoc T0->T3 subtype stratum; residual and conformal calibration were not refit by subgroup.
+subtype_post_hoc,TNBC,261,5.85546550952978,10.083508568876029,8.654646507695798,11.681883189013394,0.8659003831417624,,,,Post hoc T0->T3 subtype stratum; residual and conformal calibration were not refit by subgroup.

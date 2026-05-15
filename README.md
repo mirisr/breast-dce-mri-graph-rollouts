@@ -1,188 +1,141 @@
-# Calibrated Graph Rollouts for Breast DCE-MRI
+# Endpoint-Calibrated Graph Rollouts for Breast DCE-MRI
 
-This repository packages the code, derived data products, model checkpoints,
-figures, and paper materials for the breast DCE-MRI graph rollout forecasting
-study.
+This repository packages the code, derived analysis artifacts, figures, tables,
+and manuscript source for endpoint-calibrated spatial graph rollouts for breast
+DCE-MRI functional tumor volume (FTV) forecasting.
 
-The retained model is `bio_ftv020_alive005`, a scheduled-sampling graph
-convolutional rollout model calibrated with endpoint functional tumor volume
-(FTV) and alive-supervoxel supervision. The main evaluation compares this model
-against the previous scheduled-sampling rollout baseline using deterministic
-T3 forecasts and conditional Monte Carlo simulations.
+The current manuscript model is `hybrid_a50_bio_k8`, reported in the paper as
+`Hybrid-Edge k=8`. It combines endpoint and active-burden calibration with a
+hybrid spatial-feature graph neighborhood and radial-biologic edge attributes.
+The older `bio_ftv020_alive005` model is retained as the historical
+Endpoint+Active calibration baseline, not the final publication model.
 
-## Figure Highlights
+## Current Paper
 
-The full paper figures are under `paper/figures/`. The README only shows two
-representative panels: one visual example of the graph rollout task and one
-summary of the Monte Carlo calibration result.
-
-**Patient-level graph forecasts.** Two held-out examples show observed and
-forecasted supervoxel graphs across visits. The center panel summarizes each
-patient's observed and predicted FTV trajectory.
-
-![Two-patient graph rollout examples](paper/figures/ispy2_two_patient_rollout_static.png)
-
-**Conditional Monte Carlo calibration.** The MC comparison tracks bias,
-coverage, and interval width across conditioning horizons for the baseline and
-the retained biology-calibrated model.
-
-![Conditional Monte Carlo calibration diagnostics](paper/figures/mc_diagnostic_bias_coverage_width.png)
-
-## Repository Layout
-
-The repository is organized around one pipeline:
-
-```text
-derived graph tensors -> trained rollout checkpoints -> deterministic/MC results
-                      -> notebooks and plotting scripts -> paper figures/tables
-```
-
-| Path | What it contains | How it connects |
-| --- | --- | --- |
-| `data/ispy2/` | Derived cohort metadata, cross-validation folds, audits, and 758 patient-level graph tensors in `graphs_consistent/*.pt`. | These files are the model inputs. They are derived supervoxel graphs, not raw MRI volumes. |
-| `src/lsgc/` | Local graph convolutional modeling package: graph layers, forecaster, matching utilities, metrics, and tests. | Imported by the training, evaluation, Monte Carlo, notebook, and figure scripts. |
-| `experiments/preprocessing/` | Scripts that build/register the consistent graph representation. | Produces the derived graph tensors stored under `data/ispy2/`. |
-| `experiments/stage1_forecaster/` | Training and deterministic evaluation scripts for the scheduled-sampling rollout models. | Uses `data/ispy2/` and `src/lsgc/`, writes fold checkpoints and evaluation summaries. |
-| `experiments/consistent_rollout/` | Conditional Monte Carlo runner, Slurm wrappers, summarizer, and tests. | Uses trained checkpoints plus held-out fold graphs to generate MC samples, calibration summaries, and patient-level result tables. |
-| `models/` | Fold checkpoints and training logs for the baseline, primary retained model, and controls. | These checkpoints are loaded by deterministic evaluation, MC simulation, and figure-generation scripts. |
-| `results/` | Derived deterministic and Monte Carlo outputs: summaries, calibration JSON, per-patient tables, MC draws, subgroup summaries, and notebook exports. | These are the main quantitative artifacts used by notebooks and the paper. |
-| `notebooks/` | Analysis notebooks and small notebook helper modules. | Used for exploratory comparison, result interpretation, and export of paper-ready tables/figures. |
-| `paper/` | LaTeX source, compiled paper PDF, references, figure scripts, generated figures, and paper tables. | This is the paper package assembled from the checkpoints, result tables, and figure-generation scripts. |
-| `docs/` | Progress notes, model-change notes, reproducibility notes, and experiment plans. | Documents the reasoning that led from the baseline model to the retained biology-calibrated model. |
-| `cradle/` | Cluster notes, queue guidance, and setup references for Cradle runs. | Records how the training and MC jobs were launched on the cluster. |
-| `environment/` | Minimal environment notes and dependency list. | Gives the package requirements needed to rerun the analyses. |
-
-The root-level compatibility links keep the copied scripts runnable with the
-same paths used during development:
-
-| Link | Target | Purpose |
-| --- | --- | --- |
-| `lsgc` | `src/lsgc` | Lets scripts import `lsgc` from the repository root. |
-| `reports` | `results` | Preserves older script paths that wrote to `reports/`. |
-| `datasets/ispy2` | `data/ispy2` | Preserves older dataset paths used by preprocessing and evaluation scripts. |
-| `runs/consistent_forecaster_v2/...` | `models/...` | Preserves checkpoint paths used by existing rollout and MC scripts. |
-
-## Important Files
-
-| File | Role |
-| --- | --- |
-| `paper/main.tex` | Main LaTeX source for the paper. |
-| `paper/bio_ftv020_mc_manuscript.pdf` | Current compiled paper PDF. |
-| `paper/make_manuscript_support.py` | Builds paper support figures and CSV tables from saved results. |
-| `paper/make_retained_graph_forecast_figure.py` | Builds the two-patient graph rollout figure from checkpoints, graph tensors, and saved MC outputs. |
-| `experiments/stage1_forecaster/train_consistent_forecaster_v2.py` | Main training entry point for the consistent rollout models. |
-| `experiments/stage1_forecaster/eval_consistent_forecaster.py` | Deterministic rollout evaluation entry point. |
-| `experiments/consistent_rollout/run_conditional_mc.py` | Conditional Monte Carlo simulation entry point. |
-| `experiments/consistent_rollout/run_conditional_mc_bio_retrained_grid.sbatch` | Slurm array wrapper for the retained-model MC runs. |
-| `experiments/consistent_rollout/summarize_conditional_mc_bio_retrained.py` | Summarizes baseline and retained MC outputs into comparison tables. |
-| `notebooks/consistent_rollout_bio_retraining_results.ipynb` | Main analysis notebook comparing baseline, retained deterministic results, and MC simulations. |
-| `data/DATA_MANIFEST.md` | Describes included derived data and excluded raw imaging files. |
-| `models/MODEL_MANIFEST.md` | Describes the included baseline, retained, and control model checkpoints. |
-
-## Main Paper Build
-
-From the repository root:
+The manuscript package is under `paper/`.
 
 ```bash
 cd paper
-latexmk -pdf -interaction=nonstopmode main.tex
+latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
 ```
 
-The compiled PDF is also included as:
+The current compiled manuscript is also included as:
 
 ```text
 paper/bio_ftv020_mc_manuscript.pdf
 ```
 
-## Key Results
+## Main Claims Supported By This Package
 
-The main result artifacts are:
+- Synthetic graph controls test when message passing helps.
+- Endpoint and active-burden losses correct the low-FTV center of the original
+  graph rollout.
+- The retained Hybrid-Edge model improves held-out T0-to-T3 FTV error,
+  coverage, CRPS, and conformal interval width relative to the original graph
+  rollout.
+- Scalar and hybrid FTV baselines define the boundary of the graph claim: scalar
+  centers remain strong for scalar FTV, while the graph model contributes
+  structured tumor-state forecasts and active-node dynamics.
+- MRI-burden threshold readouts are reported as imaging-burden monitoring
+  outputs, not pathology response claims.
+
+## Repository Layout
 
 ```text
-results/consistent_forecaster_v2_bio_eval/notebook_exports/
+data/                         derived graph metadata and graph tensors
+experiments/stage1_forecaster training, deterministic eval, edge ablations
+experiments/consistent_rollout residual MC evaluation and Slurm wrappers
+models/                       model manifest and checkpoint packaging notes
+notebooks/                    analysis notebooks and plotting helpers
+paper/                        IEEE Access manuscript source, figures, tables
+results/                      derived result tables, MC outputs, and summaries
+docs/                         reproducibility notes and historical planning notes
+environment/                  minimal dependency notes
+cradle/                       cluster setup and launch notes
+```
+
+The compatibility links are intentional:
+
+```text
+lsgc -> src/lsgc
+reports -> results
+datasets/ispy2 -> ../data/ispy2
+```
+
+They preserve the development paths used by the training, evaluation, and
+manuscript-support scripts.
+
+## Current Key Artifacts
+
+| Path | Purpose |
+| --- | --- |
+| `paper/main.tex` | Current IEEE Access manuscript source. |
+| `paper/figures/` | Current paper figures, including synthetic, calibration, edge-ablation, and clinical burden panels. |
+| `paper/tables/` | Current paper-facing CSV tables. |
+| `paper/make_manuscript_support.py` | Regenerates paper tables and support figures from `results/`. |
+| `experiments/stage1_forecaster/train_consistent_forecaster_v2.py` | Current rollout training entry point with endpoint losses, dynamic edge modes, and optional edge attributes. |
+| `experiments/stage1_forecaster/edge_modes.py` | Dynamic no-edge, spatial, radial, feature, hybrid, and radial-biologic graph construction utilities. |
+| `experiments/stage1_forecaster/run_edge_meaning_grid.sbatch` | Stage-one edge-neighborhood ablation launcher. |
+| `experiments/stage1_forecaster/run_edge_attribute_meaning_grid.sbatch` | Stage-two edge-attribute ablation launcher. |
+| `experiments/consistent_rollout/run_conditional_mc.py` | Conditional residual Monte Carlo evaluator. |
+| `notebooks/breast_cohort_mc_and_graph_ablation_results.ipynb` | Current breast cohort and synthetic ablation comparison notebook. |
+| `notebooks/breast_edge_attribute_publication_model_results.ipynb` | Edge-attribute publication-model analysis notebook. |
+| `notebooks/clinical_burden_monitoring_results.ipynb` | MRI-burden monitoring readout notebook. |
+
+## Current Result Roots
+
+The manuscript-support code reads from these result roots:
+
+```text
 results/conditional_mc_consistent_rollout/
 results/conditional_mc_bio_retrained/
+results/edge_meaning_breast_mc/
+results/edge_attr_meaning_breast_mc/
+results/edge_meaning_synthetic_spatial_field_mc/
+results/edge_attr_meaning_synthetic_spatial_field_mc/
+results/bio_ftv_latest_job_analysis/
+results/bio_ftv_synthetic_ablation_analysis/
+results/bio_ftv_clinical_burden_monitoring/
+results/bio_ftv_real_stratified_ablation/
 ```
 
-The primary model result is:
+The final retained model result used by the manuscript is:
 
 ```text
-results/conditional_mc_bio_retrained/bio_ftv020_alive005/
-```
-
-The two control runs are:
-
-```text
-results/conditional_mc_bio_retrained/bio_ftv010_alive000/
-results/conditional_mc_bio_retrained/bio_ftv010_alive002/
-```
-
-## Reproducing the Figure Panels
-
-The two-patient graph forecast figure is generated from the retained fold
-checkpoints, derived graph tensors, and saved MC outputs:
-
-```bash
-python paper/make_retained_graph_forecast_figure.py
-```
-
-The manuscript support figures and tables are generated by:
-
-```bash
-python paper/make_manuscript_support.py
-```
-
-## Reproducing Conditional Monte Carlo Evaluation
-
-The retained MC runs used:
-
-- `N_MC=256`
-- `METRIC_DRAWS=0`
-- all start visits: T0, T1, T2
-- held-out fold protocol
-- same 758-patient graph cohort
-
-The core runner is:
-
-```text
-experiments/consistent_rollout/run_conditional_mc.py
-```
-
-The retained-model Slurm array wrapper is:
-
-```text
-experiments/consistent_rollout/run_conditional_mc_bio_retrained_grid.sbatch
-```
-
-The summarizer is:
-
-```text
-experiments/consistent_rollout/summarize_conditional_mc_bio_retrained.py
+results/edge_attr_meaning_breast_mc/hybrid_a50_bio_k8/
 ```
 
 ## Data Status
 
-This repository is intended as a private project repository. It includes derived
-supervoxel graph tensors and patient-level derived results, but it does not
-include raw MRI image volumes.
+This repository does not include raw DCE-MRI image volumes. The source imaging
+collections are public/controlled-access TCIA resources, and users should obtain
+those datasets through TCIA under the relevant data-use terms.
 
-See:
+This working repository currently includes derived graph tensors and
+patient-level derived result files. Before making the repository public, review
+`RELEASE_AUDIT.md` and decide whether to keep those derived patient-level files
+in the public release or replace them with aggregate paper tables plus
+instructions for rebuilding the derived artifacts from TCIA data.
 
-```text
-data/DATA_MANIFEST.md
-models/MODEL_MANIFEST.md
-```
+## Reproducibility Notes
 
-## Environment
+The current paper can be audited from the included derived result files and
+paper tables. Re-running the full model training path requires the graph
+artifacts, fold assignments, and the training scripts in `experiments/`.
 
-The minimal package list for the current analysis environment is in:
+The final Hybrid-Edge training/evaluation scripts and MC outputs are included,
+but checkpoint files are not currently mirrored into this local publication
+package. Before claiming that the public repo contains trained weights, mirror
+the intended checkpoint families into `models/` and update
+`models/MODEL_MANIFEST.md`.
 
-```text
-environment/requirements-minimal.txt
-```
+## Public Release Rule
 
-The source repository's longer pinned requirements file is copied as:
+Do not make this repository public until:
 
-```text
-environment_requirements_source.txt
-```
+1. the release audit has been completed;
+2. the data and model manifests match what will actually be distributed;
+3. no raw or restricted imaging files are present;
+4. no local credentials, cluster-only paths, or scratch logs are present;
+5. the README and manuscript code-availability statement point to the final
+   public repository URL.

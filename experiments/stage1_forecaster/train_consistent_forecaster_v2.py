@@ -31,6 +31,12 @@ from experiments.stage1_forecaster.train_consistent_forecaster import (
     compute_stats,
     load_sample,
 )
+from experiments.stage1_forecaster.edge_modes import (
+    EDGE_ATTR_MODE_CHOICES,
+    EDGE_MODE_CHOICES,
+    build_history_graph,
+    edge_attr_dim,
+)
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 VISITS = ("T0", "T1", "T2", "T3")
@@ -43,47 +49,6 @@ def _epsilon_schedule(epoch: int, warmup: int, anneal: int, eps_max: float) -> f
         return float(eps_max)
     progress = min(1.0, (epoch - warmup) / max(1, anneal))
     return float(eps_max * progress)
-
-
-def _build_history_edges(history_pos: list[Tensor], k_spatial: int = 8) -> Tensor:
-    def _spatial_knn_edges_dev(pos: Tensor, k: int = 8) -> Tensor:
-        d = torch.cdist(pos, pos)
-        d.fill_diagonal_(float("inf"))
-        k_eff = min(k, pos.shape[0] - 1)
-        _, idx = torch.topk(d, k=k_eff, largest=False, dim=1)
-        src = torch.arange(pos.shape[0], device=pos.device).unsqueeze(1).expand_as(idx).reshape(-1)
-        dst = idx.reshape(-1)
-        ei = torch.stack([torch.cat([src, dst]), torch.cat([dst, src])], dim=0)
-        return ei.unique(dim=1)
-
-    all_src: list[Tensor] = []
-    all_dst: list[Tensor] = []
-    offsets = []
-    cur = 0
-    for pos in history_pos:
-        offsets.append(cur)
-        cur += int(pos.shape[0])
-    offsets.append(cur)
-
-    for v, pos in enumerate(history_pos):
-        off = offsets[v]
-        n_v = int(pos.shape[0])
-        if n_v > 1:
-            ei_v = _spatial_knn_edges_dev(pos, k=k_spatial)
-            all_src.append(ei_v[0] + off)
-            all_dst.append(ei_v[1] + off)
-        if v < len(history_pos) - 1:
-            n_next = int(history_pos[v + 1].shape[0])
-            n_link = min(n_v, n_next)
-            if n_link > 0:
-                src_t = torch.arange(n_link, device=pos.device) + off
-                dst_t = torch.arange(n_link, device=pos.device) + offsets[v + 1]
-                all_src += [src_t, dst_t]
-                all_dst += [dst_t, src_t]
-
-    if not all_src:
-        return torch.zeros((2, 0), dtype=torch.long, device=history_pos[0].device)
-    return torch.stack([torch.cat(all_src), torch.cat(all_dst)], dim=0).long()
 
 
 def sliced_wasserstein_tensor(
@@ -210,6 +175,8 @@ def curriculum_forward_patient(
     epsilon: float,
     rng: random.Random,
     k_spatial: int,
+    edge_mode: str,
+    edge_attr_mode: str,
     lambda_pos: float,
     lambda_feat: float,
     lambda_cloud: float,
@@ -244,8 +211,14 @@ def curriculum_forward_patient(
         x_cat = torch.cat(history_x, dim=0)
         p_cat = torch.cat(history_pos, dim=0)
         t_cat = torch.cat(history_t, dim=0)
-        edge_index = _build_history_edges(history_pos, k_spatial=k_spatial)
-        out = model(x_cat, p_cat, t_cat, edge_index)
+        edge_index, edge_attr = build_history_graph(
+            history_pos,
+            history_x,
+            k_spatial=k_spatial,
+            edge_mode=edge_mode,
+            edge_attr_mode=edge_attr_mode,
+        )
+        out = model(x_cat, p_cat, t_cat, edge_index, edge_attr=edge_attr)
         n_last = history_x[-1].shape[0]
         sl = slice(x_cat.shape[0] - n_last, x_cat.shape[0])
         dp = out["delta_pos"][sl]
@@ -325,6 +298,8 @@ def rollout_eval_metrics(
     mean: Tensor,
     std: Tensor,
     k_spatial: int,
+    edge_mode: str,
+    edge_attr_mode: str,
     volume_idx: int,
 ) -> dict[str, float]:
     x_all = ((s.x.to(DEVICE) - mean) / std)
@@ -354,8 +329,14 @@ def rollout_eval_metrics(
         x_cat = torch.cat(history_x, dim=0)
         p_cat = torch.cat(history_pos, dim=0)
         t_cat = torch.cat(history_t, dim=0)
-        edge_index = _build_history_edges(history_pos, k_spatial=k_spatial)
-        out = model(x_cat, p_cat, t_cat, edge_index)
+        edge_index, edge_attr = build_history_graph(
+            history_pos,
+            history_x,
+            k_spatial=k_spatial,
+            edge_mode=edge_mode,
+            edge_attr_mode=edge_attr_mode,
+        )
+        out = model(x_cat, p_cat, t_cat, edge_index, edge_attr=edge_attr)
         n_last = history_x[-1].shape[0]
         sl = slice(x_cat.shape[0] - n_last, x_cat.shape[0])
         dp = out["delta_pos"][sl]
@@ -409,8 +390,19 @@ def rollout_eval_mae(
     mean: Tensor,
     std: Tensor,
     k_spatial: int,
+    edge_mode: str,
+    edge_attr_mode: str,
 ) -> float:
-    return rollout_eval_metrics(model, s, mean, std, k_spatial, volume_idx=1)["rollout_mae_mm"]
+    return rollout_eval_metrics(
+        model,
+        s,
+        mean,
+        std,
+        k_spatial,
+        edge_mode=edge_mode,
+        edge_attr_mode=edge_attr_mode,
+        volume_idx=1,
+    )["rollout_mae_mm"]
 
 
 @dataclass
@@ -422,6 +414,8 @@ class Config:
     hidden: int = 64
     num_layers: int = 2
     k_spatial: int = 8
+    edge_mode: str = "full"
+    edge_attr_mode: str = "none"
     lr: float = 3e-4
     weight_decay: float = 1e-4
     epochs: int = 180
@@ -508,7 +502,7 @@ def train(cfg: Config):
         feat_out_dim=in_ch,
         use_delta_t=True,
         use_edge_gating=True,
-        edge_attr_dim=0,
+        edge_attr_dim=edge_attr_dim(cfg.edge_attr_mode),
     ).to(DEVICE)
 
     if ck is not None and s1_in_ch == in_ch:
@@ -567,6 +561,8 @@ def train(cfg: Config):
                 epsilon=eps,
                 rng=rng,
                 k_spatial=cfg.k_spatial,
+                edge_mode=cfg.edge_mode,
+                edge_attr_mode=cfg.edge_attr_mode,
                 lambda_pos=cfg.lambda_pos,
                 lambda_feat=cfg.lambda_feat,
                 lambda_cloud=cfg.lambda_cloud,
@@ -603,6 +599,8 @@ def train(cfg: Config):
                     epsilon=0.0,
                     rng=rng,
                     k_spatial=cfg.k_spatial,
+                    edge_mode=cfg.edge_mode,
+                    edge_attr_mode=cfg.edge_attr_mode,
                     lambda_pos=cfg.lambda_pos,
                     lambda_feat=cfg.lambda_feat,
                     lambda_cloud=cfg.lambda_cloud,
@@ -615,7 +613,16 @@ def train(cfg: Config):
                     random_start=False,
                 )
                 val_loss.append(l.item())
-                metrics = rollout_eval_metrics(model, s, mean, std, cfg.k_spatial, cfg.volume_idx)
+                metrics = rollout_eval_metrics(
+                    model,
+                    s,
+                    mean,
+                    std,
+                    cfg.k_spatial,
+                    edge_mode=cfg.edge_mode,
+                    edge_attr_mode=cfg.edge_attr_mode,
+                    volume_idx=cfg.volume_idx,
+                )
                 for key, val in metrics.items():
                     if np.isfinite(val):
                         val_metrics.setdefault(key, []).append(float(val))
@@ -728,6 +735,18 @@ def main():
     ap.add_argument("--folds-parquet", default="datasets/ispy2/folds.parquet")
 
     ap.add_argument("--k-spatial", type=int, default=8)
+    ap.add_argument(
+        "--edge-mode",
+        choices=EDGE_MODE_CHOICES,
+        default="full",
+        help="Dynamic intra-visit edge mode; all non-none modes keep temporal identity links.",
+    )
+    ap.add_argument(
+        "--edge-attr-mode",
+        choices=EDGE_ATTR_MODE_CHOICES,
+        default="none",
+        help="Optional dynamic edge attributes. radial_bio adds tumor-centered geometry and feature-contrast channels.",
+    )
     ap.add_argument("--lambda-pos", type=float, default=1.0)
     ap.add_argument("--lambda-feat", type=float, default=0.5)
     ap.add_argument("--lambda-cloud", type=float, default=1.0)
@@ -764,6 +783,8 @@ def main():
         fold=args.fold,
         folds_parquet=args.folds_parquet,
         k_spatial=args.k_spatial,
+        edge_mode=args.edge_mode,
+        edge_attr_mode=args.edge_attr_mode,
         lambda_pos=args.lambda_pos,
         lambda_feat=args.lambda_feat,
         lambda_cloud=args.lambda_cloud,

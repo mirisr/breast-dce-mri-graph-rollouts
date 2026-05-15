@@ -33,7 +33,7 @@ from plotly.subplots import make_subplots
 from IPython.display import display
 
 # Use plotly_mimetype + notebook so the figures render reliably both in
-# JupyterLab-style mime-bundle renderers and classic Jupyter HTML renderers.
+# JupyterLab / Cursor (mime-bundle path) AND classic Jupyter (HTML path).
 pio.renderers.default = 'plotly_mimetype+notebook_connected'
 
 

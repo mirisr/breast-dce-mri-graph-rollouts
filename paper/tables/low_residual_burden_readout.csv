@@ -1,0 +1,7 @@
+readout,n_patients,event_rate,score_mean,score_auc,note
+observed_ftv_le_0.1_ml,758,0.00395778364116095,0.0509873845646438,0.4602649006622517,"Low residual imaging burden score: fraction of MC draws with near-zero T3 MRI FTV, not a pathology response probability."
+pathology_pCR,758,0.3153034300791557,0.0509873845646438,0.5690940898573859,Association with pathology pCR where labels are available; no pathology response head was trained.
+"score_bin_(-0.001, 0.0156]",355,0.28450704225352114,0.004951584507042254,,Binned association with pathology pCR by low residual imaging burden score.
+"score_bin_(0.0156, 0.0312]",102,0.2647058823529412,0.026807598039215685,,Binned association with pathology pCR by low residual imaging burden score.
+"score_bin_(0.0312, 0.0938]",164,0.34146341463414637,0.061213795731707314,,Binned association with pathology pCR by low residual imaging burden score.
+"score_bin_(0.0938, 0.391]",137,0.40145985401459855,0.17603786496350365,,Binned association with pathology pCR by low residual imaging burden score.
