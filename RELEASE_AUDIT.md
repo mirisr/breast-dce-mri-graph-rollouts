@@ -10,6 +10,12 @@ should remain private until the checks below are complete.
   `paper/tables/`.
 - Current training, edge-ablation, deterministic-evaluation, and MC scripts are
   under `experiments/`.
+- Independent Breast-MRI-NACT-Pilot external stress-test helpers are under
+  `experiments/breast_nact_external/` and `cradle/`.
+- Supplementary reproducibility details are under
+  `docs/SUPPLEMENTARY_REPRODUCIBILITY_DETAILS.md`.
+- Manuscript supplementary material is under `paper/supplementary_material.tex`
+  and `paper/supplementary_material.pdf`.
 - Current result roots used by the paper are under `results/`.
 - The final manuscript model is `hybrid_a50_bio_k8` / `Hybrid-Edge k=8`.
 - The older `bio_ftv020_alive005` model is now a historical Endpoint+Active

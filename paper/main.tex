@@ -7,6 +7,7 @@
 \usepackage{microtype}
 \usepackage{tabularx}
 \usepackage{textcomp}
+\usepackage{url}
 \usepackage{xcolor}
 \usepackage{bm}
 
@@ -49,7 +50,9 @@
 (e-mail: iris.seaman01@utrgv.edu; tamer.oraby@utrgv.edu;
 murad.moqbel@utrgv.edu)}
 
-\tfootnote{Funding and support information will be finalized before submission.}
+\tfootnote{This work used de-identified breast DCE-MRI resources distributed
+through The Cancer Imaging Archive. No external funding is reported for this
+analysis.}
 
 \markboth
 {Seaman \headeretal: Endpoint-Calibrated Spatial Graph Rollouts for FTV Forecasting}
@@ -79,10 +82,13 @@ from 12.88 mL to 4.63 mL, MC-mean FTV error from 15.26 mL to 5.56 mL, and
 conformal 90\% interval width from 59.51 mL to 22.38 mL, while improving raw
 90\% coverage from 0.766 to 0.877. Its Monte Carlo samples also identified
 low residual MRI burden at \Tthree{} (FTV $<5$ mL) with AUC 0.957, comparable
-to strong last-observed FTV threshold baselines. These results support
-uncertainty-aware imaging-burden monitoring: message passing is most useful
-when neighborhoods carry response structure, and endpoint calibration is
-required to make spatial rollouts clinically interpretable.
+to strong last-observed FTV threshold baselines. Task-adapted scalar and hybrid
+readouts remained strongest for scalar FTV alone, so the supported contribution
+is not universal graph superiority on a single scalar endpoint. Instead, these
+results support uncertainty-aware imaging-burden monitoring: message passing is
+most useful when neighborhoods carry response structure, endpoint calibration
+makes spatial rollouts clinically interpretable, and scalar or hybrid readouts
+can be layered on the graph state when the clinical query is only future FTV.
 \end{abstract}
 
 \begin{keywords}
@@ -119,6 +125,17 @@ and identifying cases whose imaging trajectory remains high-risk or poorly
 resolved. This paper therefore treats FTV forecasting as an uncertainty-aware
 imaging-burden problem rather than as only a retrospective response
 classification task.
+
+The spatial structure of the tumor is central to that problem. A breast tumor
+seen on DCE-MRI is not a single homogeneous object: enhancement, washout,
+necrosis, boundary motion, and segmentation uncertainty can vary across the
+three-dimensional lesion. Representing the tumor as a graph of local supervoxel
+regions gives each region its own state while preserving local neighborhood
+relationships. In that representation, forecasting asks how the local tumor
+regions move, change enhancement, and remain active or become inactive over
+future visits. The graph is therefore not used only as a machine-learning
+convenience; it is a compact way to represent a spatially organized tumor state
+that can be rolled forward and queried for future FTV.
 
 Existing breast MRI prediction work covers several related but distinct
 directions. Multi-feature MRI models and longitudinal fusion networks predict
@@ -185,6 +202,9 @@ conformal width, subgroup calibration, and MRI-burden threshold readouts. The
 central claim is therefore layered: structured tumor-state forecasting,
 endpoint calibration, and residual uncertainty calibration are distinct
 components of longitudinal imaging forecasts and should be evaluated together.
+This framing is intended to make the paper readable as a forecasting study
+rather than as a pure architecture paper: each experiment asks whether one of
+these layers is necessary, calibrated, or clinically interpretable.
 
 \section{Related Work and Contribution}
 \label{sec:related}
@@ -271,6 +291,19 @@ biased tumor-burden center before the residual MC sampler is applied. \\
 \end{tabularx}
 \end{table*}
 
+This positioning also separates the present task from nearby IEEE imaging
+traditions. Recent IEEE work in breast DCE-MRI has advanced image-native tumor
+segmentation with hybrid convolutional/transformer architectures
+\cite{zhou2025prototype}, while future-MRI prediction work has shown that
+temporal generative models can synthesize missing or future sessions in other
+longitudinal MRI settings \cite{fan2022trgan}. Those directions are important
+but solve different problems: segmentation returns the present tumor support,
+and future-image synthesis returns an image-like target. The target here is a
+calibrated future FTV distribution together with a graph-native spatial tumor
+state. This makes the novelty narrower and more precise: probabilistic
+longitudinal FTV forecasting with a graph-native state and calibrated endpoint
+burden readout.
+
 \subsection{Digital Twins and Image-Based Tumor Forecasting}
 
 Digital twin work is the closest conceptual neighbor. In oncology, a digital
@@ -355,6 +388,15 @@ without making intervals unnecessarily wide? The ablations answer these
 questions in order, moving from a geometry-only rollout to endpoint-calibrated,
 edge-aware, scalar, and hybrid readouts. Figure~\ref{fig:ecsf} summarizes this
 layered evaluation stack.
+
+At the patient level, the forecasted object is a future three-dimensional tumor
+state, not a response label. Each node represents a transported baseline tumor
+region; node features describe local volume, enhancement, and activity; and
+edges connect nearby or biologically similar regions. The model first predicts
+the next graph state. FTV is then read from that predicted graph by summing the
+expected active-volume contribution of the nodes. This separation is useful for
+evaluation: spatial graph quality, endpoint FTV calibration, and residual
+predictive uncertainty can be diagnosed independently.
 
 \begin{figure*}[t]
 \centering
@@ -921,15 +963,18 @@ only \Tzero{} is observed. \\
 The reported experiments are designed to be auditable from the derived graph
 artifacts and held-out prediction tables. The public source imaging resources
 are the I-SPY2 and ACRIN-6698 breast DCE-MRI collections available through TCIA
-and their associated data-use terms. The repository associated with this
-manuscript will include preprocessing summaries, training and evaluation
-scripts, retained-model configuration files, Monte Carlo evaluation code, and
-figure/table generation scripts. The final repository URL will be inserted
-before publication; if the repository is not public at initial submission,
-the code can be provided to editors or reviewers upon request subject to
-repository anonymization and data-use constraints. Protected patient-level
-imaging data and restricted derived files will not be redistributed through the
-code repository.
+and their associated data-use terms. The release repository associated with
+this manuscript is prepared at
+\url{https://github.com/mirisr/breast-dce-mri-graph-rollouts}. It includes
+preprocessing summaries, split files, training and evaluation scripts,
+retained-model configuration files, Monte Carlo evaluation code, and
+figure/table generation scripts. It also includes a supplementary
+reproducibility-details file that maps manuscript claims to model tags, split
+files, launchers, and table/figure artifacts. If the repository remains private
+at initial submission, reviewer access can be granted through a private link or
+archive subject to repository anonymization and data-use constraints. Protected
+patient-level imaging data and restricted derived files will not be
+redistributed through the code repository.
 
 The split and leakage audit above defines the patient-level fold protocol,
 residual-pool exclusion rule, conformal calibration rule, and scalar/hybrid
@@ -944,10 +989,11 @@ post-training residual MC protocols.
 This work is a retrospective secondary analysis of de-identified longitudinal
 breast MRI resources. Source-study consent, trial governance, and data-access
 requirements are handled through the originating I-SPY2/ACRIN resources and
-TCIA access mechanisms. No prospective intervention or treatment assignment was
-performed as part of this analysis. The final submission will include
-institution-specific IRB or exemption language consistent with the data-use and
-repository-release plan.
+TCIA access mechanisms. No prospective intervention, direct participant
+contact, treatment assignment, or identifiable-data analysis was performed as
+part of this study. No local protocol number is reported in this manuscript
+draft; any institution-specific exemption documentation can be supplied with
+the submission record if required by the journal or institution.
 
 \section{Experiments and Ablations}
 \label{sec:experiments}
@@ -961,7 +1007,14 @@ coverage, interval width, and CRPS. Fourth, graph-native outputs are evaluated
 because active-node and sampled-cloud states are graph-specific outputs.
 Finally, edge-neighborhood ablations and stratified analyses test
 whether the final graph model is robust across edge definitions, cohorts, and
-molecular subtype groups.
+molecular subtype groups. A small independent Breast-MRI-NACT-Pilot external
+test is included as preliminary external validation of paper-family model
+transfer; because it contains only 11 graph-ready patients, it is not treated
+as powered clinical external validation. Expanded endpoint-loss, graph-edge,
+scalar-baseline, burden-conditional, reliability, source-stratified, and
+external stress-test tables are provided in the Supplementary Material so that
+the main paper can keep the narrative focused on the retained model and the
+key reviewer-facing comparisons.
 
 The primary real-cohort analysis is held-out \Tzero$\rightarrow$\Tthree{} FTV
 forecasting on the graph-bearing I-SPY2/ACRIN cohort with \modeltag{} as the
@@ -1087,10 +1140,10 @@ Endpoint calibration removes the original low-FTV bias while preserving the
 main sampled-cloud geometry metrics.}
 \label{tab:deterministic}
 \small
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{lrr}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lrr@{}}
 \toprule
-Metric & Baseline & Endpoint-calibrated \\
+Metric & Baseline & Calibrated \\
 \midrule
 Predicted FTV mean (mL) & 12.43 & 23.21 \\
 Observed FTV mean (mL) & 24.94 & 24.94 \\
@@ -1320,75 +1373,6 @@ for the lowest scalar FTV error.}
 \label{fig:latestedge}
 \end{figure}
 
-\subsection{Improvement Persisted Across Conditioning Times and Patients}
-
-The robustness check used the same held-out full-cohort MC rollout outputs with
-shared residual pools and shared conformal calibration across subgroups.
-Across the three final-visit horizons, \modeltag{} raw 90\% coverage was
-0.860--0.877, conformal coverage was 0.901, and conformal widths were
-22.38--25.61 mL. Paired MC-mean FTV MAE reductions versus the original graph
-rollout were 8.13--9.70 mL across \Tzero$\rightarrow$\Tthree,
-\Tone$\rightarrow$\Tthree, and \Ttwo$\rightarrow$\Tthree{} conditioning,
-showing that the uncertainty gain persisted beyond the baseline-to-final
-rollout.
-
-As a post hoc stratified evaluation of the same \Tzero$\rightarrow$\Tthree{}
-rollout, every molecular subtype showed a \modeltag{} MC-mean FTV MAE
-reduction of at least 8.76 mL versus the original graph rollout. The
-HR-/HER2+ stratum was smallest and hardest ($n=57$; \modeltag{} MC-mean MAE
-7.52 mL; raw coverage 0.912), so this evidence supports robustness of the
-average improvement while showing that endpoint difficulty varies across
-biologic strata. The subtype labels use hormone receptor (HR), HER2, and
-triple-negative breast cancer (TNBC) status.
-Burden-conditional calibration exposed the remaining failure mode. Below the
-top decile of observed \Tthree{} FTV ($<58.73$ mL), \modeltag{} had
-3.97 mL MC-mean MAE, 0.924 raw coverage, and 2.49 CRPS, compared with
-12.22 mL, 0.771, and 4.94 for the original graph rollout. In the top 5\%
-($\geq84.88$ mL; 38 patients), however, \modeltag{} still had 31.57 mL
-MC-mean MAE and only 0.237 raw coverage. The high-volume tail is therefore
-improved but remains the main calibration limitation.
-Table~\ref{tab:robustness} summarizes the horizon and subtype robustness
-checks, and Figure~\ref{fig:burdencalibration} shows the quartile-level
-coverage and CRPS behavior.
-
-\begin{table*}[t]
-\centering
-\caption{Calibration and stratified robustness checks from the final retained
-MC rollout, \modeltag. Horizon rows summarize final-visit conditioning buckets.
-Subtype rows are post hoc strata of the same held-out
-\Tzero$\rightarrow$\Tthree{} full-cohort rollout using the full-cohort MC
-calibration.}
-\label{tab:robustness}
-\scriptsize
-\setlength{\tabcolsep}{3.5pt}
-\begin{tabularx}{\textwidth}{llrrrr>{\raggedright\arraybackslash}X}
-\toprule
-Check & Stratum & $n$ & Final MC MAE & MAE reduction & Raw 90\% cov. & Additional evidence \\
- &  &  & (mL) & (mL; 95\% CI) &  &  \\
-\midrule
-Horizon & \Tzero$\rightarrow$\Tthree & 758 & 5.56 & 9.70 (8.87--10.58) & 0.877 & Conformal coverage 0.901; conformal width 22.38 mL; CRPS 4.00. \\
-Horizon & \Tone$\rightarrow$\Tthree & 758 & 5.90 & 8.97 (8.23--9.76) & 0.865 & Conformal coverage 0.901; conformal width 25.61 mL; CRPS 4.18. \\
-Horizon & \Ttwo$\rightarrow$\Tthree & 758 & 5.68 & 8.13 (7.44--8.86) & 0.860 & Conformal coverage 0.901; conformal width 24.45 mL; CRPS 3.94. \\
-\midrule
-Subtype & HR+/HER2+ & 128 & 4.90 & 8.76 (7.55--9.86) & 0.906 & Post hoc \Tzero$\rightarrow$\Tthree{} stratum; full-cohort residual calibration. \\
-Subtype & HR+/HER2- & 312 & 5.24 & 9.56 (8.35--10.97) & 0.869 & Post hoc \Tzero$\rightarrow$\Tthree{} stratum; full-cohort residual calibration. \\
-Subtype & HR-/HER2+ & 57 & 7.52 & 10.82 (7.12--16.31) & 0.912 & Smallest and hardest subtype stratum by FTV error. \\
-Subtype & TNBC & 261 & 5.86 & 10.08 (8.68--11.68) & 0.866 & Post hoc \Tzero$\rightarrow$\Tthree{} stratum; full-cohort residual calibration. \\
-\bottomrule
-\end{tabularx}
-\end{table*}
-
-\begin{figure*}[t]
-\centering
-\includegraphics[width=0.88\textwidth]{figures/calibration_by_t3_burden.pdf}
-\caption{Burden-conditional \Tzero$\rightarrow$\Tthree{} calibration by
-observed \Tthree{} FTV quartile. Scalar and hybrid FTV readouts are strongest
-for scalar burden, while the retained graph distribution improves substantially
-over the original graph baseline but remains less calibrated in the
-high-volume tail.}
-\label{fig:burdencalibration}
-\end{figure*}
-
 \subsection{Task-Adapted Scalar and Hybrid Baselines}
 
 Task-adapted FTV controls are necessary because a future-volume forecasting
@@ -1466,6 +1450,143 @@ applying the same scalar residual MC calibration.}
 \label{fig:hybridcontrol}
 \end{figure*}
 
+\subsection{Improvement Persisted Across Conditioning Times, Sources, and Patients}
+
+The robustness check used the same held-out full-cohort MC rollout outputs with
+shared residual pools and shared conformal calibration across subgroups.
+Across the three final-visit horizons, \modeltag{} raw 90\% coverage was
+0.860--0.877, conformal coverage was 0.901, and conformal widths were
+22.38--25.61 mL. Paired MC-mean FTV MAE reductions versus the original graph
+rollout were 8.13--9.70 mL across \Tzero$\rightarrow$\Tthree,
+\Tone$\rightarrow$\Tthree, and \Ttwo$\rightarrow$\Tthree{} conditioning,
+showing that the uncertainty gain persisted beyond the baseline-to-final
+rollout.
+
+Source-stratified robustness was evaluated without refitting source-specific
+models. The same retained full-cohort model and residual MC protocol were
+scored separately on ACRIN-6698 and I-SPY2 patients. This is not independent
+external validation, but it is a harder internal check than reporting only the
+pooled cohort. Table~\ref{tab:source} shows stable interval behavior across
+the two sources: ACRIN-6698 had lower MC-mean FTV error, while I-SPY2 was
+harder by scalar error but had nearly identical raw coverage and conformal
+width.
+
+\begin{table}[t]
+\centering
+\caption{Source-stratified \Tzero$\rightarrow$\Tthree{} robustness for the
+retained \modeltag{} MC rollout. The same full-cohort model and residual
+calibration protocol are used; this is source-stratified internal robustness,
+not independent external validation.}
+\label{tab:source}
+\scriptsize
+\setlength{\tabcolsep}{3.2pt}
+\begin{tabular}{lrrrrr}
+\toprule
+Source & $n$ & MC MAE & CRPS & Raw cov. & Conf. width \\
+ &  & (mL) &  &  & (mL) \\
+\midrule
+ACRIN-6698 & 202 & 4.55 & 2.93 & 0.881 & 21.78 \\
+I-SPY2 & 556 & 5.93 & 4.39 & 0.876 & 22.59 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A small independent-cohort stress test was then run on 11 graph-ready
+Breast-MRI-NACT-Pilot patients using the same source-trained paper-family
+graph checkpoints and source-cohort residual MC calibration. This analysis was
+designed as a preliminary external validation of whether the relative
+graph-family ordering persists under a collection shift, not as a powered test
+of clinical generalization. Table~\ref{tab:nactstress} shows that
+\modeltag{} was the strongest of the paper-family variants in this external
+test: it had the lowest deterministic FTV MAE, lowest MC-mean FTV MAE, and
+highest raw and conformal 90\% coverage among the four retained graph-family
+comparators. The same table also shows the transfer limitation: all four
+endpoint-calibrated variants overpredicted \Tthree{} FTV on this small cohort,
+so cohort-specific recalibration remains necessary before this result can be
+used as definitive clinical external validation.
+
+\begin{table}[t]
+\centering
+\caption{Independent Breast-MRI-NACT-Pilot \Tzero$\rightarrow$\Tthree{} stress
+test on 11 graph-ready external patients. All rows use source-trained
+paper-family graph checkpoints and source-cohort residual MC calibration; no
+NACT residuals are used for calibration. This is a preliminary external test,
+not powered definitive external validation.}
+\label{tab:nactstress}
+\scriptsize
+\setlength{\tabcolsep}{3.1pt}
+\begin{tabular}{lrrrrr}
+\toprule
+Model & Det. MAE & Det. bias & MC MAE & Raw cov. & Conf. cov. \\
+ & (mL) & (mL) & (mL) &  &  \\
+\midrule
+\calibrationtag{} & 20.17 & +19.71 & 23.51 & 0.455 & 0.455 \\
+No-edge endpoint & 19.21 & +18.82 & 22.11 & 0.455 & 0.455 \\
+Radial-biologic $k=8$ & 16.70 & +16.36 & 19.31 & 0.455 & 0.455 \\
+\textbf{\modeltag{}} & \textbf{12.40} & +12.13 & \textbf{15.01} & \textbf{0.545} & \textbf{0.545} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+As a post hoc stratified evaluation of the same \Tzero$\rightarrow$\Tthree{}
+rollout, every molecular subtype showed a \modeltag{} MC-mean FTV MAE
+reduction of at least 8.76 mL versus the original graph rollout. The
+HR-/HER2+ stratum was smallest and hardest ($n=57$; \modeltag{} MC-mean MAE
+7.52 mL; raw coverage 0.912), so this evidence supports robustness of the
+average improvement while showing that endpoint difficulty varies across
+biologic strata. The subtype labels use hormone receptor (HR), HER2, and
+triple-negative breast cancer (TNBC) status.
+Burden-conditional calibration exposed the remaining failure mode. Below the
+top decile of observed \Tthree{} FTV ($<58.73$ mL), \modeltag{} had
+3.97 mL MC-mean MAE, 0.924 raw coverage, and 2.49 CRPS, compared with
+12.22 mL, 0.771, and 4.94 for the original graph rollout. In the top 5\%
+($\geq84.88$ mL; 38 patients), however, \modeltag{} still had 31.57 mL
+MC-mean MAE and only 0.237 raw coverage. The high-volume tail is therefore
+improved but remains the main calibration limitation.
+Table~\ref{tab:robustness} summarizes the horizon and subtype robustness
+checks, and Figure~\ref{fig:burdencalibration} shows the quartile-level
+coverage and CRPS behavior.
+
+\begin{table*}[t]
+\centering
+\caption{Calibration and stratified robustness checks from the final retained
+MC rollout, \modeltag. Horizon rows summarize final-visit conditioning buckets.
+Subtype rows are post hoc strata of the same held-out
+\Tzero$\rightarrow$\Tthree{} full-cohort rollout using the full-cohort MC
+calibration.}
+\label{tab:robustness}
+\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabularx}{\textwidth}{llrrrr>{\raggedright\arraybackslash}X}
+\toprule
+Check & Stratum & $n$ & Final MC MAE & MAE reduction & Raw 90\% cov. & Additional evidence \\
+ &  &  & (mL) & (mL; 95\% CI) &  &  \\
+\midrule
+Horizon & \Tzero$\rightarrow$\Tthree & 758 & 5.56 & 9.70 (8.87--10.58) & 0.877 & Conformal coverage 0.901; conformal width 22.38 mL; CRPS 4.00. \\
+Horizon & \Tone$\rightarrow$\Tthree & 758 & 5.90 & 8.97 (8.23--9.76) & 0.865 & Conformal coverage 0.901; conformal width 25.61 mL; CRPS 4.18. \\
+Horizon & \Ttwo$\rightarrow$\Tthree & 758 & 5.68 & 8.13 (7.44--8.86) & 0.860 & Conformal coverage 0.901; conformal width 24.45 mL; CRPS 3.94. \\
+\midrule
+Subtype & HR+/HER2+ & 128 & 4.90 & 8.76 (7.55--9.86) & 0.906 & Post hoc \Tzero$\rightarrow$\Tthree{} stratum; full-cohort residual calibration. \\
+Subtype & HR+/HER2- & 312 & 5.24 & 9.56 (8.35--10.97) & 0.869 & Post hoc \Tzero$\rightarrow$\Tthree{} stratum; full-cohort residual calibration. \\
+Subtype & HR-/HER2+ & 57 & 7.52 & 10.82 (7.12--16.31) & 0.912 & Smallest and hardest subtype stratum by FTV error. \\
+Subtype & TNBC & 261 & 5.86 & 10.08 (8.68--11.68) & 0.866 & Post hoc \Tzero$\rightarrow$\Tthree{} stratum; full-cohort residual calibration. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.88\textwidth]{figures/calibration_by_t3_burden.pdf}
+\caption{Burden-conditional \Tzero$\rightarrow$\Tthree{} calibration by
+observed \Tthree{} FTV quartile. Scalar and hybrid FTV readouts are strongest
+for scalar burden, while the retained graph distribution improves substantially
+over the original graph baseline but remains less calibrated in the
+high-volume tail.}
+\label{fig:burdencalibration}
+\end{figure*}
+
+\subsection{Clinical MRI-Burden Monitoring Readouts}
+
 The retained Monte Carlo rollout also gives a clinically interpretable
 burden-monitoring readout. Before considering pathology, the direct imaging
 question is whether the future \Tthree{} MRI is likely to show low or high
@@ -1480,6 +1601,12 @@ low residual MRI burden with AUC 0.957 and high residual MRI burden with AUC
 important boundary on the claim. The graph rollout's added value is the
 calibrated future-burden distribution and graph-native tumor-state output, while
 current FTV remains a strong threshold baseline.
+For the MC probability scores, the low-residual-burden readout had Brier score
+0.061 with calibration intercept 0.396 and slope 1.334, while the
+high-residual-burden readout had Brier score 0.052 with calibration intercept
+-1.330 and slope 0.929. These calibration summaries support using the
+probabilities as imaging-burden scores, while still keeping them separate from
+pathology response probabilities.
 
 \begin{table*}[t]
 \centering
@@ -1672,12 +1799,17 @@ anatomically uninformative, segmentation or registration noise dominates local
 structure, or endpoint residuals are strongly non-exchangeable across burden or
 subtype strata.
 
-The most important current failure mode is the high-volume tail. Even though
-the retained model improved average FTV error and calibration, the top 5\% of
-observed \Tthree{} FTV remained undercovered. This should be treated as an
-explicit calibration target: future versions should test regularized
-FTV-stratified residual MC, subtype-aware calibration, or tail-aware conformal
-correction before using the system for high-burden clinical readouts.
+The most important current failure modes are the high-volume tail and
+cross-cohort calibration shift. Even though the retained model improved average
+FTV error and calibration, the top 5\% of observed \Tthree{} FTV remained
+undercovered. The independent 11-patient Breast-MRI-NACT-Pilot stress test also
+showed that \modeltag{} transferred best among the paper-family graph variants,
+but still overpredicted endpoint FTV and achieved only 0.545 raw and conformal
+90\% coverage. This supports preliminary external transfer of the relative
+model ordering, while identifying recalibration as an explicit target: future
+versions should test regularized FTV-stratified residual MC, subtype-aware
+calibration, tail-aware conformal correction, and external-cohort recalibration
+before using the system for high-burden or cross-cohort clinical readouts.
 
 The supported interpretation is imaging-burden forecasting. The model predicts
 future MRI FTV and sampled tumor clouds under the available graph
@@ -1698,9 +1830,11 @@ The residual Monte Carlo sampler is empirical and depends on the exchangeability
 of held-out residuals within conditioning buckets. The current MC samples also
 mix spatial uncertainty, active-node uncertainty, and scalar FTV residual
 uncertainty; a fuller uncertainty decomposition would estimate these components
-separately. The current real-data evaluation is internal to the
-I-SPY2/ACRIN-derived cohort; external validation on independent longitudinal
-breast MRI cohorts is required before clinical translation.
+separately. The current real-data evaluation is primarily internal to the
+I-SPY2/ACRIN-derived cohort, and the Breast-MRI-NACT-Pilot analysis is a small
+preliminary external test rather than definitive external validation. Larger
+independent longitudinal breast MRI cohorts are required before clinical
+translation.
 
 \section{Conclusion}
 \label{sec:conclusion}

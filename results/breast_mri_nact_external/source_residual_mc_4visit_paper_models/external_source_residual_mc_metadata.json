@@ -1,0 +1,30 @@
+{
+  "n_mc": 256,
+  "seed": 20260521,
+  "external_det_root": "reports/breast_mri_nact_external/deterministic_4visit_paper_models",
+  "calibration_policy": "source MC deviations and source conformal scores only; external NACT residuals are used only for final scoring",
+  "bio_ftv020_alive005": {
+    "label": "Endpoint+Active",
+    "source_mc_dir": "reports/conditional_mc_bio_retrained/bio_ftv020_alive005",
+    "n_external_patients": 11,
+    "n_external_records": 99
+  },
+  "no_edges": {
+    "label": "No-edge endpoint",
+    "source_mc_dir": "reports/edge_meaning_breast_mc/no_edges",
+    "n_external_patients": 11,
+    "n_external_records": 99
+  },
+  "radial_bio_k8": {
+    "label": "Radial-biologic k=8",
+    "source_mc_dir": "reports/edge_attr_meaning_breast_mc/radial_bio_k8",
+    "n_external_patients": 11,
+    "n_external_records": 99
+  },
+  "hybrid_a50_bio_k8": {
+    "label": "Hybrid-Edge k=8",
+    "source_mc_dir": "reports/edge_attr_meaning_breast_mc/hybrid_a50_bio_k8",
+    "n_external_patients": 11,
+    "n_external_records": 99
+  }
+}

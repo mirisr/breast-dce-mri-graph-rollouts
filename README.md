@@ -25,6 +25,26 @@ The current compiled manuscript is also included as:
 paper/bio_ftv020_mc_manuscript.pdf
 ```
 
+The reviewer-facing reproducibility supplement is:
+
+```text
+docs/SUPPLEMENTARY_REPRODUCIBILITY_DETAILS.md
+```
+
+It maps the paper's model names, data partitions, external stress-test rows,
+training/evaluation launchers, and figure/table artifacts to repository paths.
+
+The manuscript-facing supplementary material is:
+
+```text
+paper/supplementary_material.pdf
+paper/supplementary_material.tex
+```
+
+It collects expanded endpoint-loss, graph-neighborhood, scalar-baseline,
+burden-conditional, reliability/PIT, source-stratified, and external
+stress-test tables.
+
 ## Main Claims Supported By This Package
 
 - Synthetic graph controls test when message passing helps.
@@ -36,6 +56,9 @@ paper/bio_ftv020_mc_manuscript.pdf
 - Scalar and hybrid FTV baselines define the boundary of the graph claim: scalar
   centers remain strong for scalar FTV, while the graph model contributes
   structured tumor-state forecasts and active-node dynamics.
+- The independent Breast-MRI-NACT-Pilot stress test is reported as preliminary
+  external validation on 11 graph-ready patients, not as powered clinical
+  external validation.
 - MRI-burden threshold readouts are reported as imaging-burden monitoring
   outputs, not pathology response claims.
 
@@ -70,14 +93,20 @@ manuscript-support scripts.
 | Path | Purpose |
 | --- | --- |
 | `paper/main.tex` | Current IEEE Access manuscript source. |
+| `paper/supplementary_material.tex` | Supplementary material source with expanded ablation and calibration tables. |
+| `paper/supplementary_material.pdf` | Compiled supplementary material. |
+| `paper/make_supplementary_material.py` | Regenerates supplementary material from paper-facing CSV tables. |
 | `paper/figures/` | Current paper figures, including synthetic, calibration, edge-ablation, and clinical burden panels. |
 | `paper/tables/` | Current paper-facing CSV tables. |
+| `docs/SUPPLEMENTARY_REPRODUCIBILITY_DETAILS.md` | Supplementary audit trail for model tags, data partitions, external stress-test results, and reproduction commands. |
 | `paper/make_manuscript_support.py` | Regenerates paper tables and support figures from `results/`. |
 | `experiments/stage1_forecaster/train_consistent_forecaster_v2.py` | Current rollout training entry point with endpoint losses, dynamic edge modes, and optional edge attributes. |
 | `experiments/stage1_forecaster/edge_modes.py` | Dynamic no-edge, spatial, radial, feature, hybrid, and radial-biologic graph construction utilities. |
 | `experiments/stage1_forecaster/run_edge_meaning_grid.sbatch` | Stage-one edge-neighborhood ablation launcher. |
 | `experiments/stage1_forecaster/run_edge_attribute_meaning_grid.sbatch` | Stage-two edge-attribute ablation launcher. |
 | `experiments/consistent_rollout/run_conditional_mc.py` | Conditional residual Monte Carlo evaluator. |
+| `experiments/breast_nact_external/` | Independent Breast-MRI-NACT-Pilot audit, preprocessing, and external evaluation helpers. |
+| `cradle/run_breast_nact_external_4visit_paper_models_*.sbatch` | External stress-test evaluation and source-residual MC launchers for the four paper-family models. |
 | `notebooks/breast_cohort_mc_and_graph_ablation_results.ipynb` | Current breast cohort and synthetic ablation comparison notebook. |
 | `notebooks/breast_edge_attribute_publication_model_results.ipynb` | Edge-attribute publication-model analysis notebook. |
 | `notebooks/clinical_burden_monitoring_results.ipynb` | MRI-burden monitoring readout notebook. |
@@ -97,6 +126,7 @@ results/bio_ftv_latest_job_analysis/
 results/bio_ftv_synthetic_ablation_analysis/
 results/bio_ftv_clinical_burden_monitoring/
 results/bio_ftv_real_stratified_ablation/
+paper/tables/external_nact_stress_test_t0t3.csv
 ```
 
 The final retained model result used by the manuscript is:

@@ -18,6 +18,20 @@ The retained configuration is recorded in:
 configs/hybrid_a50_bio_k8.json
 ```
 
+For the full reviewer-facing audit trail, including manuscript table paths,
+external stress-test details, and launch commands, see:
+
+```text
+docs/SUPPLEMENTARY_REPRODUCIBILITY_DETAILS.md
+```
+
+For the manuscript-facing supplementary tables, see:
+
+```text
+paper/supplementary_material.pdf
+paper/supplementary_material.tex
+```
+
 ## Main Evaluation Path
 
 The main held-out evaluation is T0-to-T3 FTV forecasting on the graph-bearing
@@ -31,6 +45,25 @@ I-SPY2/ACRIN cohort. The primary metrics are:
 Secondary analyses include deterministic bias/MAE, active-node error, SWD,
 Chamfer, Dice, final-visit horizon checks, subtype/source/burden strata, and
 MRI-burden threshold readouts.
+
+The independent Breast-MRI-NACT-Pilot stress test is reported only for the four
+paper-family endpoint-calibrated models:
+
+```text
+Endpoint+Active
+No-edge endpoint
+Radial-biologic k=8
+Hybrid-Edge k=8
+```
+
+The paper-facing external table is:
+
+```text
+paper/tables/external_nact_stress_test_t0t3.csv
+```
+
+It should be interpreted as preliminary external validation on 11 graph-ready
+patients, not as powered clinical external validation.
 
 ## Conditional Monte Carlo Design
 

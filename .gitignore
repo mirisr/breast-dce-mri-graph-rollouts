@@ -43,6 +43,9 @@ data/**/images/
 data/**/segmentations/
 experiments/**/logs/
 experiments/**/runs/
+reports/**/logs/
+results/**/logs/
+external_models/
 
 # Keep derived graph tensors, model checkpoints, and parquet outputs available
 # in this private working repository. Revisit these exceptions before converting
