@@ -82,13 +82,12 @@ from 12.88 mL to 4.63 mL, MC-mean FTV error from 15.26 mL to 5.56 mL, and
 conformal 90\% interval width from 59.51 mL to 22.38 mL, while improving raw
 90\% coverage from 0.766 to 0.877. Its Monte Carlo samples also identified
 low residual MRI burden at \Tthree{} (FTV $<5$ mL) with AUC 0.957, comparable
-to strong last-observed FTV threshold baselines. Task-adapted scalar and hybrid
-readouts remained strongest for scalar FTV alone, so the supported contribution
-is not universal graph superiority on a single scalar endpoint. Instead, these
-results support uncertainty-aware imaging-burden monitoring: message passing is
-most useful when neighborhoods carry response structure, endpoint calibration
-makes spatial rollouts clinically interpretable, and scalar or hybrid readouts
-can be layered on the graph state when the clinical query is only future FTV.
+to strong last-observed FTV threshold baselines. These results support
+calibrated structured tumor-state forecasting with task-adapted scalar
+readouts: message passing is most useful when neighborhoods carry response
+structure, endpoint calibration makes spatial rollouts clinically
+interpretable, and scalar or hybrid readouts remain appropriate when the
+clinical query is only future FTV.
 \end{abstract}
 
 \begin{keywords}
@@ -191,16 +190,20 @@ biologic similarity.
 
 The paper is organized around one synthetic-to-real claim: graph neighborhoods
 are valuable when they carry local response information, but the resulting
-spatial rollout must still be calibrated to the clinical endpoint. It makes
-three contributions. First, it defines endpoint-calibrated spatial graph rollout
-as a longitudinal DCE-MRI forecasting task in which the predicted object is both
-a future tumor graph state and a calibrated FTV distribution. Second, it uses
-controlled synthetic tumors and real I-SPY2/ACRIN ablations to test when graph
-neighborhoods add value beyond node-local, scalar, and hybrid alternatives.
-Third, it evaluates empirical residual MC uncertainty with coverage, CRPS,
-conformal width, subgroup calibration, and MRI-burden threshold readouts. The
-central claim is therefore layered: structured tumor-state forecasting,
-endpoint calibration, and residual uncertainty calibration are distinct
+spatial rollout must still be calibrated to the clinical endpoint. The
+contribution can be read as three linked claims:
+\begin{itemize}
+\item \textit{Graph-native tumor-state forecasting:} the predicted object is a
+future tumor graph state with active-node, imaging-feature, and sampled-cloud
+structure, not only a scalar burden estimate.
+\item \textit{Endpoint calibration:} FTV and active-burden supervision convert
+the rollout from a plausible geometric forecast into a calibrated FTV center.
+\item \textit{Residual uncertainty evaluation:} empirical MC and conformal
+readouts quantify coverage, sharpness, subgroup calibration, and clinically
+interpretable MRI-burden probabilities.
+\end{itemize}
+The central claim is therefore layered: structured tumor-state forecasting,
+endpoint calibration, and scalar or hybrid endpoint readouts are distinct
 components of longitudinal imaging forecasts and should be evaluated together.
 This framing is intended to make the paper readable as a forecasting study
 rather than as a pure architecture paper: each experiment asks whether one of
@@ -1007,10 +1010,10 @@ coverage, interval width, and CRPS. Fourth, graph-native outputs are evaluated
 because active-node and sampled-cloud states are graph-specific outputs.
 Finally, edge-neighborhood ablations and stratified analyses test
 whether the final graph model is robust across edge definitions, cohorts, and
-molecular subtype groups. A small independent Breast-MRI-NACT-Pilot external
-test is included as preliminary external validation of paper-family model
-transfer; because it contains only 11 graph-ready patients, it is not treated
-as powered clinical external validation. Expanded endpoint-loss, graph-edge,
+molecular subtype groups. A small independent Breast-MRI-NACT-Pilot cohort is
+included only as an external stress test of paper-family model transfer;
+because it contains 11 graph-ready patients, it is not treated as powered
+clinical external validation. Expanded endpoint-loss, graph-edge,
 scalar-baseline, burden-conditional, reliability, source-stratified, and
 external stress-test tables are provided in the Supplementary Material so that
 the main paper can keep the narrative focused on the retained model and the
@@ -1320,26 +1323,27 @@ held-out fold protocol. The final retained model for the paper is therefore
 \modeltag{}, a hybrid spatial-feature neighborhood model with radial biologic
 edge attributes, rather than the earlier endpoint/active-calibrated graph.
 
-Table~\ref{tab:latestedge} shows the decision. The radial-biologic $k=8$
-variant has the lowest scalar MC-mean FTV MAE by a small margin
-(5.52 mL versus 5.56 mL), but \modeltag{} gives the strongest overall
-publication balance: nearly identical endpoint accuracy, the narrowest
-conformal intervals, the best raw 90\% coverage among the top endpoint models,
-and preserved sampled-cloud geometry. Compared with the no-edge endpoint
-model, \modeltag{} lowers deterministic FTV MAE by 0.65 mL, MC-mean FTV MAE by
-1.02 mL, CRPS by 0.56, conformal width by 4.12 mL, and MC Chamfer by
-0.043 mm. This is the clearest evidence that edges carry measurable signal:
-when the neighborhood is constrained to local spatial and feature-relevant
-neighbors, message passing improves the endpoint uncertainty layer without
-damaging graph-state geometry.
+The full edge-family search is kept in the Supplementary Material so the main
+paper can focus on the three reviewer-facing landmarks: the original graph
+rollout, the endpoint-calibrated graph, and the final edge-aware graph. In the
+full ablation, the radial-biologic $k=8$ variant had the lowest scalar MC-mean
+FTV MAE by a small margin (5.52 mL versus 5.56 mL), but \modeltag{} gave the
+strongest overall publication balance: nearly identical endpoint accuracy, the
+narrowest conformal intervals, the best raw 90\% coverage among the top
+endpoint models, and preserved sampled-cloud geometry. Compared with the
+no-edge endpoint model, \modeltag{} lowered deterministic FTV MAE by 0.65 mL,
+MC-mean FTV MAE by 1.02 mL, CRPS by 0.56, conformal width by 4.12 mL, and MC
+Chamfer by 0.043 mm. This is the clearest evidence that edges carry measurable
+signal: when the neighborhood is constrained to local spatial and
+feature-relevant neighbors, message passing improves the endpoint uncertainty
+layer without damaging graph-state geometry.
 
 \begin{table*}[t]
 \centering
-\caption{\Tzero$\rightarrow$\Tthree{} model-selection results after adding
-edge-aware neighborhoods and radial biologic edge attributes. MC MAE is the
-absolute error of the Monte Carlo mean FTV. The final retained graph model is
-\modeltag{} because it gives the best balance across endpoint, uncertainty,
-and sampled-cloud metrics.}
+\caption{\Tzero$\rightarrow$\Tthree{} main graph-model progression. The large
+edge-family ablation is provided in the Supplementary Material; the main table
+keeps the three landmarks needed to interpret the paper claim. MC MAE is the
+absolute error of the Monte Carlo mean FTV.}
 \label{tab:latestedge}
 \scriptsize
 \setlength{\tabcolsep}{3.3pt}
@@ -1350,10 +1354,7 @@ Model & Det. MAE & MC MAE & CRPS & Raw cov. & Conf. width & MC SWD & MC Chamfer 
 \midrule
 Original graph rollout & 12.88 & 15.26 & 8.35 & 0.766 & 59.51 & 1.320 & 3.656 \\
 \calibrationtag{} & 5.88 & 7.61 & 5.16 & 0.876 & 27.95 & 1.207 & 3.485 \\
-No-edge endpoint graph & 5.28 & 6.59 & 4.56 & 0.871 & 26.50 & 1.209 & 3.491 \\
-Radial $k=8$ graph & 5.07 & 6.25 & 4.38 & 0.864 & 26.01 & 1.171 & 3.450 \\
-Radial-biologic $k=8$ graph & \textbf{4.62} & \textbf{5.52} & \textbf{3.95} & 0.872 & 23.29 & 1.177 & 3.457 \\
-\textbf{\modeltag{}} & 4.63 & 5.56 & 4.00 & \textbf{0.877} & \textbf{22.38} & \textbf{1.172} & \textbf{3.449} \\
+\textbf{\modeltag{}} & \textbf{4.63} & \textbf{5.56} & \textbf{4.00} & \textbf{0.877} & \textbf{22.38} & \textbf{1.172} & \textbf{3.449} \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -1494,16 +1495,15 @@ I-SPY2 & 556 & 5.93 & 4.39 & 0.876 & 22.59 \\
 A small independent-cohort stress test was then run on 11 graph-ready
 Breast-MRI-NACT-Pilot patients using the same source-trained paper-family
 graph checkpoints and source-cohort residual MC calibration. This analysis was
-designed as a preliminary external validation of whether the relative
-graph-family ordering persists under a collection shift, not as a powered test
-of clinical generalization. Table~\ref{tab:nactstress} shows that
+designed to test whether the relative graph-family ordering persists under a
+collection shift, not to validate clinical generalization. Table~\ref{tab:nactstress} shows that
 \modeltag{} was the strongest of the paper-family variants in this external
 test: it had the lowest deterministic FTV MAE, lowest MC-mean FTV MAE, and
 highest raw and conformal 90\% coverage among the four retained graph-family
 comparators. The same table also shows the transfer limitation: all four
 endpoint-calibrated variants overpredicted \Tthree{} FTV on this small cohort,
 so cohort-specific recalibration remains necessary before this result can be
-used as definitive clinical external validation.
+used as external validation for clinical deployment.
 
 \begin{table}[t]
 \centering
@@ -1787,6 +1787,19 @@ tumor-shape forecasting as future work.
 
 \section{Conditions of Use and Limitations}
 
+Three limitations should be foregrounded before considering use outside the
+retrospective study setting. First, scalar FTV baselines are very strong:
+last-observed scalar residual MC reached 4.82 mL MC-mean MAE, and the hybrid
+graph-plus-scalar readout reached 4.50 mL, compared with 5.56 mL for the
+retained graph rollout alone. The graph model should therefore be interpreted
+as a structured tumor-state forecaster with a calibrated FTV readout, not as a
+replacement for task-adapted scalar calibration when the only endpoint is
+future FTV. Second, the highest-burden tail remains undercovered: in the top
+5\% of observed \Tthree{} FTV, the retained graph had 31.57 mL MC-mean MAE and
+0.237 raw 90\% coverage. Third, the independent Breast-MRI-NACT-Pilot analysis
+contains only 11 graph-ready patients and is a stress test of transfer behavior,
+not powered external validation.
+
 The method has clear conditions of use. It should work best when the graph
 preserves meaningful regional identity across visits, registration makes local
 neighborhoods interpretable, tumor response has spatial coherence, and node
@@ -1799,13 +1812,13 @@ anatomically uninformative, segmentation or registration noise dominates local
 structure, or endpoint residuals are strongly non-exchangeable across burden or
 subtype strata.
 
-The most important current failure modes are the high-volume tail and
+The most important current technical failure modes are the high-volume tail and
 cross-cohort calibration shift. Even though the retained model improved average
-FTV error and calibration, the top 5\% of observed \Tthree{} FTV remained
-undercovered. The independent 11-patient Breast-MRI-NACT-Pilot stress test also
-showed that \modeltag{} transferred best among the paper-family graph variants,
-but still overpredicted endpoint FTV and achieved only 0.545 raw and conformal
-90\% coverage. This supports preliminary external transfer of the relative
+FTV error and calibration, it remains less reliable for very large residual
+tumor burdens. The independent 11-patient Breast-MRI-NACT-Pilot stress test
+also showed that \modeltag{} transferred best among the paper-family graph
+variants, but still overpredicted endpoint FTV and achieved only 0.545 raw and
+conformal 90\% coverage. This supports preliminary transfer of the relative
 model ordering, while identifying recalibration as an explicit target: future
 versions should test regularized FTV-stratified residual MC, subtype-aware
 calibration, tail-aware conformal correction, and external-cohort recalibration
