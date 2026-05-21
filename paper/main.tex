@@ -815,14 +815,14 @@ separate from loss retuning.
 The schedules serve the same goal: keep the rollout comparable to the original
 baseline while gradually exposing the model to its own predictions.
 Scheduled sampling is enabled with maximum self-feeding probability 0.5 after
-a 10-epoch warmup and 60-epoch annealing schedule. The biology losses are
+a 10-epoch warmup and 60-epoch annealing schedule. The FTV/active-burden losses are
 annealed over 20 epochs. These schedule values were inherited from the
 scheduled-sampling baseline to preserve comparability and reduce early
 self-feeding instability while the endpoint losses ramp in. Checkpoint
 selection is still geometry-first, but adds small validation penalties for
 \Tthree{} FTV error and active-node-count error.
 The first endpoint-calibrated configuration, \calibrationtag, uses the
-strongest FTV/active-burden setting from the biology retraining grid.
+strongest FTV/active-burden setting from the endpoint-calibration grid.
 
 The final retained model, \modeltag, keeps these endpoint objectives and
 changes the graph-neighborhood construction. The original full graph allowed
