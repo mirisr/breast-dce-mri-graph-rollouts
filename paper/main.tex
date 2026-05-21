@@ -39,6 +39,8 @@
 
 \history{Date of publication xxxx 00, 0000, date of current version xxxx 00, 0000.}
 \doi{10.1109/ACCESS.2026.xxxxxxx}
+\vol{14}
+\year{2026}
 
 \title{Endpoint-Calibrated Spatial Graph Rollouts for Probabilistic Functional Tumor Volume Forecasting in Breast DCE-MRI}
 
@@ -161,9 +163,10 @@ active or inactive status, then queries the forecasted graph for future FTV and
 sampled tumor-cloud uncertainty. The graph rollout builds on message-passing and
 learned physical-simulation ideas, where local interactions are used to evolve
 structured states over space or time \cite{gilmer2017neural,sanchezgonzalez2018physics}.
-The uncertainty layer is evaluated with coverage, conformal intervals, and CRPS
-because forecast distributions should be judged by both calibration and
-sharpness \cite{gneiting2007proper,kuleshov2018accurate,angelopoulos2021conformal,romano2019cqr}.
+The uncertainty layer is evaluated with coverage, conformal intervals, and
+Continuous Ranked Probability Score (CRPS) because forecast distributions
+should be judged by both calibration and sharpness
+\cite{gneiting2007proper,kuleshov2018accurate,angelopoulos2021conformal,romano2019cqr}.
 
 Graph message passing is a plausible inductive bias because tumor response is
 spatially organized. Neighboring regions may share enhancement behavior,
@@ -358,9 +361,8 @@ heskes1996practical} and related neural-network regression interval work that
 calibrates deterministic or probabilistic predictors using validation residuals
 or conformal prediction \cite{papadopoulos2011reliable,kuleshov2018accurate}.
 The resulting FTV distributions are evaluated with coverage, conformal
-correction \cite{angelopoulos2021conformal,romano2019cqr}, and Continuous
-Ranked Probability Score (CRPS), a proper scoring rule for full predictive
-distributions \cite{gneiting2007proper}.
+correction \cite{angelopoulos2021conformal,romano2019cqr}, and CRPS, a proper
+scoring rule for full predictive distributions \cite{gneiting2007proper}.
 
 The contribution is not any single module alone, but the combined forecasting
 system and evaluation: a registration-consistent graph rollout architecture
@@ -1604,8 +1606,9 @@ $P(\Tthree\ \mathrm{FTV}<5\ \mathrm{mL})$ for low residual MRI burden and
 $P(\Tthree\ \mathrm{FTV}>20\ \mathrm{mL})$ for substantial residual burden.
 The model readouts are compared with simple last-observed FTV rules because
 current FTV is itself a strong clinical baseline. The retained model identified
-low residual MRI burden with AUC 0.957 and high residual MRI burden with AUC
-0.984. The last-observed FTV rules were similarly discriminative, which is an
+low residual MRI burden with area under the receiver-operating-characteristic
+curve (AUC) 0.957 and high residual MRI burden with AUC 0.984. The
+last-observed FTV rules were similarly discriminative, which is an
 important boundary on the claim. The graph rollout's added value is the
 calibrated future-burden distribution and graph-native tumor-state output, while
 current FTV remains a strong threshold baseline.
