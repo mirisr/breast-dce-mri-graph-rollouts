@@ -9,8 +9,9 @@ hybrid_a50_bio_k8
 ```
 
 It is reported as `Hybrid-Edge k=8`. It extends the Endpoint+Active calibration
-model with a hybrid spatial-feature neighborhood and radial-biologic edge
-attributes.
+model with a hybrid spatial-feature neighborhood and radial imaging-feature
+edge attributes. The `bio` substring in run tags is a historical internal label
+for these attributes and endpoint-burden losses, not a biological-marker claim.
 
 The retained configuration is recorded in:
 
@@ -52,7 +53,7 @@ paper-family endpoint-calibrated models:
 ```text
 Endpoint+Active
 No-edge endpoint
-Radial-biologic k=8
+Radial imaging-feature k=8
 Hybrid-Edge k=8
 ```
 
@@ -62,8 +63,8 @@ The paper-facing external table is:
 paper/tables/external_nact_stress_test_t0t3.csv
 ```
 
-It should be interpreted as preliminary external validation on 11 graph-ready
-patients, not as powered clinical external validation.
+It should be interpreted as a preliminary external stress test on 11
+graph-ready patients, not as powered clinical external validation.
 
 ## Conditional Monte Carlo Design
 

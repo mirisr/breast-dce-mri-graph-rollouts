@@ -26,8 +26,12 @@ access mechanism and processed under the relevant data-use terms.
 | Original graph rollout | `v2_sched_samp` / `consistent_forecaster_v2` | Scheduled-sampling graph rollout baseline. |
 | Endpoint+Active | `bio_ftv020_alive005` | Endpoint-calibrated comparator with FTV and active-burden losses. |
 | No-edge endpoint | `no_edges` | Node-local endpoint-calibrated control. |
-| Radial-biologic k=8 | `radial_bio_k8` | Radial-neighborhood graph with radial biologic edge attributes. |
+| Radial imaging-feature k=8 | `radial_bio_k8` | Radial-neighborhood graph with radial imaging-feature edge attributes. |
 | Hybrid-Edge k=8 | `hybrid_a50_bio_k8` | Final retained manuscript graph model. |
+
+The `bio` substring in repository tags is a historical internal label for
+radial imaging-feature attributes or endpoint/active-burden losses; it is not a
+claim that the edge variables are biological biomarkers.
 
 The final retained configuration is recorded in
 `configs/hybrid_a50_bio_k8.json`. The paper-facing external stress-test table
@@ -65,9 +69,9 @@ with four visits available after the external preprocessing gate. The reported
 T0-to-T3 result contains 11 patients. One additional V4 candidate failed the
 support check after segmentation mapping and was excluded before scoring.
 
-This should be described as preliminary external validation or an independent
-external stress test. The cohort is independent of the source training cohort,
-but the sample is too small to claim powered clinical external validation.
+This should be described as a preliminary independent external stress test, not
+as external validation. The cohort is independent of the source training cohort,
+but the sample is too small to claim powered clinical generalization.
 
 Paper-facing aggregate table:
 
@@ -81,7 +85,7 @@ The reported T0-to-T3 external values are:
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Endpoint+Active | 20.17 | +19.71 | 23.51 | 0.455 | 0.455 |
 | No-edge endpoint | 19.21 | +18.82 | 22.11 | 0.455 | 0.455 |
-| Radial-biologic k=8 | 16.70 | +16.36 | 19.31 | 0.455 | 0.455 |
+| Radial imaging-feature k=8 | 16.70 | +16.36 | 19.31 | 0.455 | 0.455 |
 | Hybrid-Edge k=8 | 12.40 | +12.13 | 15.01 | 0.545 | 0.545 |
 
 The key claim supported by this table is relative transfer behavior within the
@@ -112,16 +116,16 @@ transported baseline supervoxel still has tumor support at the target visit.
 The final retained model rebuilds within-visit graph edges dynamically. For
 `hybrid_a50_bio_k8`, candidate neighbors are ranked by an equal-weight
 combination of normalized spatial distance and normalized feature distance.
-The eight lowest-score neighbors are retained and symmetrized. Radial biologic
-edge attributes encode centroid distance, radial-shell relation, visit gap,
-temporal-edge status, and imaging-feature contrast.
+The eight lowest-score neighbors are retained and symmetrized. Radial
+imaging-feature edge attributes encode centroid distance, radial-shell
+relation, visit gap, temporal-edge status, and imaging-feature contrast.
 
 Implementation files:
 
 | Path | Purpose |
 | --- | --- |
 | `experiments/preprocessing/build_consistent_graphs.py` | Internal source graph construction entry point. |
-| `experiments/stage1_forecaster/edge_modes.py` | No-edge, spatial, radial, hybrid, and radial-biologic edge construction. |
+| `experiments/stage1_forecaster/edge_modes.py` | No-edge, spatial, radial, hybrid, and radial imaging-feature edge construction. |
 | `scripts/validate_graph_schema.py` | Graph schema validation helper. |
 | `experiments/breast_nact_external/` | External Breast-MRI-NACT-Pilot audit, download, derivation, and evaluation helpers. |
 

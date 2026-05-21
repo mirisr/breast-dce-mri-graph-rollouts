@@ -652,6 +652,9 @@ epochs, and trained for up to 120 epochs with early stopping.
 
 Table~\ref{tab:implementationmap} maps the paper-facing model terms to the
 implementation settings used for the retained run and the main comparator.
+The substring \texttt{bio} is an internal run tag for radial imaging-feature
+attributes and endpoint-burden losses; it is not used here to claim that the
+edge variables are biological markers.
 
 \begin{table}[t]
 \centering
@@ -799,7 +802,7 @@ is
 \end{aligned}
 \end{equation}
 The numeric coefficients are the retained loss weights from the
-biology-calibration grid rather than values tuned on the final test set. The
+FTV/active-burden calibration grid rather than values tuned on the final test set. The
 feature-change coefficient was inherited from the scheduled-sampling baseline to
 keep feature regression secondary to coordinate and cloud consistency. The FTV
 term receives the largest endpoint weight because the diagnosed baseline failure
@@ -965,18 +968,18 @@ only \Tzero{} is observed. \\
 The reported experiments are designed to be auditable from the derived graph
 artifacts and held-out prediction tables. The public source imaging resources
 are the I-SPY2 and ACRIN-6698 breast DCE-MRI collections available through TCIA
-and their associated data-use terms. The release repository associated with
-this manuscript is prepared at
+and their associated data-use terms. The reviewer-facing release repository
+associated with this manuscript is available at
 \url{https://github.com/mirisr/breast-dce-mri-graph-rollouts}. It includes
 preprocessing summaries, split files, training and evaluation scripts,
 retained-model configuration files, Monte Carlo evaluation code, and
 figure/table generation scripts. It also includes a supplementary
 reproducibility-details file that maps manuscript claims to model tags, split
-files, launchers, and table/figure artifacts. If the repository remains private
-at initial submission, reviewer access can be granted through a private link or
-archive subject to repository anonymization and data-use constraints. Protected
-patient-level imaging data and restricted derived files will not be
-redistributed through the code repository.
+files, launchers, and table/figure artifacts. If journal policy requires an
+anonymous review package, an anonymized archive with the same aggregate tables
+and scripts can be provided during review. Protected patient-level imaging data
+and restricted derived files will not be redistributed through the code
+repository.
 
 The split and leakage audit above defines the patient-level fold protocol,
 residual-pool exclusion rule, conformal calibration rule, and scalar/hybrid
@@ -1865,6 +1868,9 @@ width from 59.51 mL to 22.38 mL, and preserved sampled-cloud geometry. The
 scalar controls sharpen the final message: future FTV uncertainty is best
 treated as a calibrated burden readout on top of the spatial graph forecast,
 with scalar or hybrid centers remaining useful when only scalar FTV is needed.
+The graph-only model is not intended to replace scalar FTV baselines for
+scalar-only prediction; its contribution is a structured tumor-state forecast
+with calibrated endpoint readout.
 The threshold analyses likewise show that current FTV remains a strong
 clinical baseline; the added value of the proposed framework is the combination
 of calibrated future-burden probabilities with graph-native tumor-state
