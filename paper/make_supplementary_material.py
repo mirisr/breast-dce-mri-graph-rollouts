@@ -46,6 +46,46 @@ def fmt(value: object, digits: int = 2) -> str:
     return f"{number:.{digits}f}"
 
 
+def is_numeric_spec(spec: str) -> bool:
+    return spec == "r" or spec.startswith("R{")
+
+
+def clean_tail_label(value: object) -> str:
+    text = str(value)
+    replacements = {
+        "below_top_decile_lt_58.73_ml": "Below top decile (<58.73 mL)",
+        "top_5pct_ge_84.88_ml": "Top 5% (>=84.88 mL)",
+        "top_decile_ge_58.73_ml": "Top decile (>=58.73 mL)",
+    }
+    return replacements.get(text, text.replace("_", " "))
+
+
+def clean_model_label(value: object) -> str:
+    text = str(value)
+    replacements = {
+        "radial_bio_k16": "Radial-bio k=16",
+        "spatial_k4_bio": "Spatial-bio k=4",
+        "radial_geo_k8": "Radial-geo k=8",
+        "hybrid_a75_bio_k8": "Hybrid-bio alpha=.75 k=8",
+        "radial_bio_k4": "Radial-bio k=4",
+        "feature_volume_k8": "Feature-volume k=8",
+        "bio_ftv010_alive000": "FTV .010 only",
+        "hybrid_a50_k8": "Hybrid alpha=.50 k=8",
+        "feature_all_k8": "Feature-all k=8",
+        "hybrid_a25_k8": "Hybrid alpha=.25 k=8",
+        "hybrid_a75_k8": "Hybrid alpha=.75 k=8",
+        "feature_pe_ser_k8": "Feature PE/SER k=8",
+        "spatial_k16": "Spatial k=16",
+        "bio_ftv010_alive002": "FTV .010 + alive .002",
+        "spatial_k4": "Spatial k=4",
+        "endpoint_full_k8": "Endpoint full k=8",
+        "rbf_kernel_temporal_log": "RBF temporal log",
+        "ridge_temporal_log": "Ridge temporal log",
+        "ridge_temporal_raw": "Ridge temporal raw",
+    }
+    return replacements.get(text, text.replace("_", " "))
+
+
 def table_block(
     df: pd.DataFrame,
     columns: list[tuple[str, str, str]],
@@ -53,16 +93,17 @@ def table_block(
     label: str,
     *,
     landscape: bool = False,
-    font: str = r"\scriptsize",
+    font: str = r"\small",
 ) -> str:
     spec = "".join(kind for _, _, kind in columns)
     header = " & ".join(esc(title) for _, title, _ in columns) + r" \\"
     lines: list[str] = []
-    if landscape:
-        lines.append(r"\begin{landscape}")
     lines.extend(
         [
             font,
+            r"\setlength{\tabcolsep}{3pt}",
+            r"\renewcommand{\arraystretch}{1.08}",
+            r"\rowcolors{2}{gray!4}{white}",
             rf"\begin{{longtable}}{{@{{}}{spec}@{{}}}}",
             rf"\caption{{{esc(caption)}}}\label{{{label}}}\\",
             r"\toprule",
@@ -79,11 +120,9 @@ def table_block(
         cells: list[str] = []
         for col, _, kind in columns:
             value = row[col]
-            cells.append(fmt(value) if kind == "r" else esc(value))
+            cells.append(fmt(value) if is_numeric_spec(kind) else esc(value))
         lines.append(" & ".join(cells) + r" \\")
-    lines.extend([r"\bottomrule", r"\end{longtable}", r"\normalsize"])
-    if landscape:
-        lines.append(r"\end{landscape}")
+    lines.extend([r"\bottomrule", r"\end{longtable}", r"\rowcolors{2}{}{}", r"\normalsize"])
     return "\n".join(lines)
 
 
@@ -122,14 +161,25 @@ def main() -> int:
 
     sections.append(
         r"""\documentclass[10pt]{article}
-\usepackage[margin=0.72in]{geometry}
+\usepackage[letterpaper,landscape,margin=0.55in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
 \usepackage{booktabs}
 \usepackage{longtable}
-\usepackage{pdflscape}
 \usepackage{array}
+\usepackage{ragged2e}
+\usepackage[table]{xcolor}
 \usepackage{hyperref}
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+\newcolumntype{R}[1]{>{\RaggedLeft\arraybackslash}p{#1}}
+\setlength{\LTleft}{0pt plus 1fill}
+\setlength{\LTright}{0pt plus 1fill}
+\setlength{\LTpre}{4pt}
+\setlength{\LTpost}{8pt}
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{5pt}
+\setlength{\parskip}{4pt}
+\hypersetup{colorlinks=true,linkcolor=black,urlcolor=black,citecolor=black}
 \begin{document}
 \begin{center}
 {\Large Supplementary Material}\\[4pt]
@@ -165,7 +215,7 @@ Patient-level prediction rows and raw imaging data are not included here.
         table_block(
             loss,
             [
-                ("Model", "Model", "l"),
+                ("Model", "Model", "L{0.20\\linewidth}"),
                 ("Det MAE", "Det MAE", "r"),
                 ("Det bias", "Det bias", "r"),
                 ("MC MAE", "MC MAE", "r"),
@@ -182,7 +232,8 @@ Patient-level prediction rows and raw imaging data are not included here.
     )
 
     sections.append(
-        r"""\section*{S2. Graph-Neighborhood and Edge-Attribute Ablations}
+        r"""\clearpage
+\section*{S2. Graph-Neighborhood and Edge-Attribute Ablations}
 The graph-family search includes no-edge, spatial, radial, feature-only,
 hybrid spatial-feature, and radial-biologic edge variants. These rows are kept
 in the supplement because they support the retained model choice without making
@@ -205,11 +256,12 @@ the main manuscript table too wide.
             "mc_dice": "Dice",
         }
     )
+    graph["Model"] = graph["Model"].map(clean_model_label)
     sections.append(
         table_block(
             graph,
             [
-                ("Model", "Model", "l"),
+                ("Model", "Model", "L{0.23\\linewidth}"),
                 ("n", "n", "r"),
                 ("MC MAE", "MC MAE", "r"),
                 ("CRPS", "CRPS", "r"),
@@ -227,7 +279,8 @@ the main manuscript table too wide.
     )
 
     sections.append(
-        r"""\section*{S3. Scalar, Hybrid, and Temporal Baselines}
+        r"""\clearpage
+\section*{S3. Scalar, Hybrid, and Temporal Baselines}
 These scalar-only baselines define the boundary of the graph claim. They use
 observed FTV history through the conditioning visit and the same residual
 Monte Carlo and conformal evaluation family. They do not replace the structured
@@ -250,8 +303,8 @@ tumor-state forecast produced by the graph model.
         table_block(
             scalar,
             [
-                ("Family", "Family", "l"),
-                ("Model", "Model", "l"),
+                ("Family", "Family", "L{0.20\\linewidth}"),
+                ("Model", "Model", "L{0.20\\linewidth}"),
                 ("n_patients", "n", "r"),
                 ("Det MAE", "Det MAE", "r"),
                 ("MC MAE", "MC MAE", "r"),
@@ -276,12 +329,14 @@ tumor-state forecast produced by the graph model.
             "crps_ftv": "CRPS",
         }
     )
+    strong["Bucket"] = strong["Bucket"].map(lambda value: str(value).replace("->", "--"))
+    strong["Model"] = strong["Model"].map(clean_model_label)
     sections.append(
         table_block(
             strong,
             [
-                ("Bucket", "Bucket", "l"),
-                ("Model", "Model", "l"),
+                ("Bucket", "Bucket", "L{0.08\\linewidth}"),
+                ("Model", "Model", "L{0.20\\linewidth}"),
                 ("n_patients", "n", "r"),
                 ("Center MAE", "Center MAE", "r"),
                 ("MC MAE", "MC MAE", "r"),
@@ -295,7 +350,8 @@ tumor-state forecast produced by the graph model.
         )
     )
 
-    sections.append(r"""\section*{S4. Burden-Conditional Calibration}""")
+    sections.append(r"""\clearpage
+\section*{S4. Burden-Conditional Calibration}""")
     key_models = ["Graph retained", "Hybrid graph+scalar MC", "Last-observed scalar MC", "Graph baseline"]
     burden = pd.read_csv(TABLES / "calibration_by_t3_burden_quartile.csv")
     burden = burden[burden["model"].isin(key_models)].copy()
@@ -316,8 +372,8 @@ tumor-state forecast produced by the graph model.
         table_block(
             burden,
             [
-                ("Stratum", "Stratum", "l"),
-                ("Model", "Model", "l"),
+                ("Stratum", "Stratum", "L{0.13\\linewidth}"),
+                ("Model", "Model", "L{0.19\\linewidth}"),
                 ("n", "n", "r"),
                 ("Obs FTV", "Mean obs. FTV", "r"),
                 ("MC MAE", "MC MAE", "r"),
@@ -347,12 +403,13 @@ tumor-state forecast produced by the graph model.
             "crps": "CRPS",
         }
     )
+    tail["Stratum"] = tail["Stratum"].map(clean_tail_label)
     sections.append(
         table_block(
             tail,
             [
-                ("Stratum", "Stratum", "l"),
-                ("Model", "Model", "l"),
+                ("Stratum", "Stratum", "L{0.22\\linewidth}"),
+                ("Model", "Model", "L{0.19\\linewidth}"),
                 ("n", "n", "r"),
                 ("Obs FTV", "Mean obs. FTV", "r"),
                 ("MC MAE", "MC MAE", "r"),
@@ -367,7 +424,8 @@ tumor-state forecast produced by the graph model.
         )
     )
 
-    sections.append(r"""\section*{S5. Subtype Calibration}""")
+    sections.append(r"""\clearpage
+\section*{S5. Subtype Calibration}""")
     subtype = pd.read_csv(TABLES / "retained_full_rollout_subtype_calibration.csv")
     subtype = subtype[subtype["bucket"].eq("T0->T3")].rename(
         columns={
@@ -384,7 +442,7 @@ tumor-state forecast produced by the graph model.
         table_block(
             subtype,
             [
-                ("Subtype", "Subtype", "l"),
+                ("Subtype", "Subtype", "L{0.16\\linewidth}"),
                 ("n", "n", "r"),
                 ("Det MAE", "Det MAE", "r"),
                 ("MC MAE", "MC MAE", "r"),
@@ -413,7 +471,7 @@ tumor-state forecast produced by the graph model.
         table_block(
             rel,
             [
-                ("Model", "Model", "l"),
+                ("Model", "Model", "L{0.20\\linewidth}"),
                 ("Nominal", "Nominal", "r"),
                 ("Emp cov", "Emp. cov.", "r"),
                 ("Mean width", "Mean width", "r"),
@@ -421,24 +479,38 @@ tumor-state forecast produced by the graph model.
             ],
             "Coverage-vs-nominal reliability for T0-to-T3 graph baseline and retained graph model.",
             "tab:s-reliability",
+            font=r"\footnotesize",
         )
     )
     pit = pit_deciles().rename(columns={"model": "Model", "pit_bin": "PIT bin", "fraction": "Fraction"})
+    pit_pivot = pit.pivot(index="PIT bin", columns="Model", values=["n", "Fraction"])
+    pit_wide = pd.DataFrame(
+        {
+            "PIT bin": pit_pivot.index.astype(str),
+            "Baseline n": pit_pivot[("n", "Graph baseline")].astype(int).to_numpy(),
+            "Baseline fraction": pit_pivot[("Fraction", "Graph baseline")].to_numpy(),
+            "Retained n": pit_pivot[("n", "Graph retained")].astype(int).to_numpy(),
+            "Retained fraction": pit_pivot[("Fraction", "Graph retained")].to_numpy(),
+        }
+    )
     sections.append(
         table_block(
-            pit,
+            pit_wide,
             [
-                ("Model", "Model", "l"),
-                ("PIT bin", "PIT bin", "l"),
-                ("n", "n", "r"),
-                ("Fraction", "Fraction", "r"),
+                ("PIT bin", "PIT bin", "L{0.10\\linewidth}"),
+                ("Baseline n", "Baseline n", "r"),
+                ("Baseline fraction", "Baseline frac.", "r"),
+                ("Retained n", "Retained n", "r"),
+                ("Retained fraction", "Retained frac.", "r"),
             ],
             "T0-to-T3 PIT decile counts. Uniformity is approximate because the empirical MC sample is finite and residual-calibrated.",
             "tab:s-pit",
+            font=r"\footnotesize",
         )
     )
 
-    sections.append(r"""\section*{S7. Source and External Robustness}""")
+    sections.append(r"""\clearpage
+\section*{S7. Source and External Robustness}""")
     source = pd.read_csv(TABLES / "latest_model_collection_t0_t3.csv").rename(
         columns={
             "collection": "Source",
@@ -454,7 +526,7 @@ tumor-state forecast produced by the graph model.
         table_block(
             source,
             [
-                ("Source", "Source", "l"),
+                ("Source", "Source", "L{0.16\\linewidth}"),
                 ("n", "n", "r"),
                 ("MC MAE", "MC MAE", "r"),
                 ("CRPS", "CRPS", "r"),
@@ -482,7 +554,7 @@ tumor-state forecast produced by the graph model.
         table_block(
             external,
             [
-                ("Model", "Model", "l"),
+                ("Model", "Model", "L{0.22\\linewidth}"),
                 ("Det MAE", "Det MAE", "r"),
                 ("Det bias", "Det bias", "r"),
                 ("MC MAE", "MC MAE", "r"),
@@ -494,7 +566,8 @@ tumor-state forecast produced by the graph model.
         )
     )
 
-    sections.append(r"""\section*{S8. Imaging-Burden Readout Checks}""")
+    sections.append(r"""\clearpage
+\section*{S8. Imaging-Burden Readout Checks}""")
     burden_readout = pd.read_csv(TABLES / "clinical_burden_threshold_readouts.csv").rename(
         columns={
             "endpoint": "Endpoint",
@@ -511,8 +584,8 @@ tumor-state forecast produced by the graph model.
         table_block(
             burden_readout,
             [
-                ("Endpoint", "Endpoint", "l"),
-                ("Score", "Score", "l"),
+                ("Endpoint", "Endpoint", "L{0.16\\linewidth}"),
+                ("Score", "Score", "L{0.30\\linewidth}"),
                 ("n", "n", "r"),
                 ("Event rate", "Event rate", "r"),
                 ("AUC", "AUC", "r"),
@@ -551,4 +624,3 @@ external stress test, not powered definitive clinical validation.
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
