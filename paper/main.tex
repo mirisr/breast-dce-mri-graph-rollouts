@@ -74,14 +74,15 @@ residual Monte Carlo simulation converts the graph center into patient-level
 FTV distributions. Controlled synthetic tumors first test when graph
 neighborhoods should help. In the latent spatial-field setting, where
 neighborhoods reveal hidden response structure, the final hybrid-edge model
-reduced \Tzero$\rightarrow$\Tthree{} MC-mean FTV error by 5.43 mL and CRPS by
-3.53 relative to a no-edge control. The same framework was then evaluated on
+reduced \Tzero$\rightarrow$\Tthree{} MC-mean FTV error by 5.43 mL and
+Continuous Ranked Probability Score (CRPS) by 3.53 relative to a no-edge control. The same framework was then evaluated on
 758 held-out patients from the I-SPY2/ACRIN graph-bearing cohort. Relative to
 the original graph rollout, the final model reduced deterministic FTV error
 from 12.88 mL to 4.63 mL, MC-mean FTV error from 15.26 mL to 5.56 mL, and
 conformal 90\% interval width from 59.51 mL to 22.38 mL, while improving raw
 90\% coverage from 0.766 to 0.877. Its Monte Carlo samples also identified
-low residual MRI burden at \Tthree{} (FTV $<5$ mL) with AUC 0.957, comparable
+low residual MRI burden at \Tthree{} (FTV $<5$ mL) with receiver-operating-characteristic
+area under the curve (AUC) 0.957, comparable
 to strong last-observed FTV threshold baselines. These results support
 calibrated structured tumor-state forecasting: message passing is most useful
 when graph neighborhoods carry response structure, endpoint calibration makes
@@ -111,8 +112,9 @@ as a response-monitoring substrate for adaptive neoadjuvant trials
 central quantitative MRI biomarker, and longitudinal FTV and related DCE-MRI
 features carry response and recurrence information
 \cite{hylton2012ispy,hylton2016ftv,li2020ispy2mri,onishi2023ftvvariation}.
-Public I-SPY2 and ACRIN-6698 imaging resources make this problem testable at
-cohort scale \cite{tciaispy2,tciaacrin6698}.
+Public I-SPY2 and ACRIN-6698 imaging resources available through The Cancer
+Imaging Archive (TCIA) make this problem testable at cohort scale
+\cite{tciaispy2,tciaacrin6698}.
 
 The clinical value of this forecasting task goes beyond reducing numerical FTV
 error. During neoadjuvant therapy, serial MRI is used to monitor whether tumor
@@ -376,8 +378,8 @@ $\widehat{G}_{p,t}$ denote the predicted tumor graph state and
 $\widehat{e}_{p,t}=R(\widehat{G}_{p,t})$ denote a scalar endpoint readout, here
 FTV computed from predicted node volumes and active-node probabilities. A graph
 rollout can be spatially plausible if
-$d_G(\widehat{G}_{p,t},G_{p,t})$ is small for a cloud metric such as SWD or
-Chamfer distance, while still being clinically miscentered if
+$d_G(\widehat{G}_{p,t},G_{p,t})$ is small for a cloud metric such as sliced
+Wasserstein distance (SWD) or Chamfer distance, while still being clinically miscentered if
 $\widehat{e}_{p,t}$ is biased. For patient-level uncertainty, the requirement
 is stronger: the predictive distribution
 $\widehat{P}(e_{p,t}\mid G_{p,\leq s})$ should be sharp, centered, and
@@ -1012,7 +1014,8 @@ coverage, interval width, and CRPS. Fourth, graph-native outputs are evaluated
 because active-node and sampled-cloud states are graph-specific outputs.
 Finally, edge-neighborhood ablations and stratified analyses test
 whether the final graph model is robust across edge definitions, cohorts, and
-molecular subtype groups. A small independent Breast-MRI-NACT-Pilot cohort is
+molecular subtype groups. A small independent Breast-MRI-NACT-Pilot
+(neoadjuvant chemotherapy; NACT) cohort is
 included only as an external stress test of paper-family model transfer;
 because it contains 11 graph-ready patients, it is not treated as powered
 clinical external validation. Expanded endpoint-loss, graph-edge,
@@ -1618,7 +1621,9 @@ pathology response probabilities.
 \caption{Secondary clinically interpretable MRI-burden readouts for the
 \Tzero$\rightarrow$\Tthree{} cohort. The MC scores use the retained
 \modeltag{} residual Monte Carlo samples; last-observed FTV is included as a
-clinical-use baseline, and these endpoints are not pathology response claims.}
+clinical-use baseline, and these endpoints are not pathology response claims.
+Sens., Spec., PPV, and NPV denote sensitivity, specificity, positive predictive
+value, and negative predictive value.}
 \label{tab:clinicalburdenreadout}
 \scriptsize
 \setlength{\tabcolsep}{4.5pt}
