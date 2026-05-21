@@ -83,11 +83,10 @@ conformal 90\% interval width from 59.51 mL to 22.38 mL, while improving raw
 90\% coverage from 0.766 to 0.877. Its Monte Carlo samples also identified
 low residual MRI burden at \Tthree{} (FTV $<5$ mL) with AUC 0.957, comparable
 to strong last-observed FTV threshold baselines. These results support
-calibrated structured tumor-state forecasting with task-adapted scalar
-readouts: message passing is most useful when neighborhoods carry response
-structure, endpoint calibration makes spatial rollouts clinically
-interpretable, and scalar or hybrid readouts remain appropriate when the
-clinical query is only future FTV.
+calibrated structured tumor-state forecasting: message passing is most useful
+when graph neighborhoods carry response structure, endpoint calibration makes
+spatial rollouts clinically interpretable, and scalar or hybrid readouts remain
+appropriate when the clinical query is only future FTV.
 \end{abstract}
 
 \begin{keywords}
@@ -186,7 +185,7 @@ test whether a spatial rollout can become a calibrated center for residual
 Monte Carlo (MC) uncertainty. The final retained model, \modeltag, then updates
 the neighborhood and edge-attribute design after testing whether message passing
 becomes more useful when graph edges encode local spatial proximity and
-biologic similarity.
+imaging-feature similarity.
 
 The paper is organized around one synthetic-to-real claim: graph neighborhoods
 are valuable when they carry local response information, but the resulting
@@ -395,7 +394,7 @@ layered evaluation stack.
 At the patient level, the forecasted object is a future three-dimensional tumor
 state, not a response label. Each node represents a transported baseline tumor
 region; node features describe local volume, enhancement, and activity; and
-edges connect nearby or biologically similar regions. The model first predicts
+edges connect nearby regions or regions with similar imaging features. The model first predicts
 the next graph state. FTV is then read from that predicted graph by summing the
 expected active-volume contribution of the nodes. This separation is useful for
 evaluation: spatial graph quality, endpoint FTV calibration, and residual
@@ -500,7 +499,7 @@ $k=8$ neighborhood. Within each visit, candidate neighbors are ranked by an
 equally weighted normalized blend of spatial distance and feature distance,
 then symmetrized. Identity temporal edges connect the same transported
 supervoxel across observed history visits. Each retained edge also receives
-radial biologic attributes describing distance, radial shell similarity, visit
+radial imaging-feature attributes describing distance, radial shell similarity, visit
 gap, and local imaging-feature contrast. The forecaster then predicts
 next-visit node displacement, feature change, and a pre-sigmoid active-node
 score.
@@ -543,7 +542,7 @@ FTV distributions. \\
 \caption{Forecasting and uncertainty workflow. Registration-consistent
 supervoxel graphs are rolled forward with a shared LSGC forecaster. The final
 retained model uses dynamic hybrid spatial-feature neighborhoods with radial
-biologic edge attributes. Aggregate FTV and active-burden objectives calibrate
+imaging-feature edge attributes. Aggregate FTV and active-burden objectives calibrate
 the deterministic rollout center before the unchanged residual Monte Carlo
 sampler generates patient-level FTV distributions.}
 \label{fig:design}
@@ -603,9 +602,9 @@ normalization. This choice is a neutral prior rather than a test-set-tuned
 weight: $\alpha=1$ would reduce the rule to spatial nearest neighbors, while
 $\alpha=0$ would ignore anatomy and rank only by feature similarity. The
 equal-weight setting therefore tests whether a simple local
-spatial-plus-biologic neighborhood is useful before introducing another
+spatial-plus-imaging-feature neighborhood is useful before introducing another
 tunable hyperparameter. The $k=8$ lowest-score neighbors are retained for each
-node and then symmetrized. For those edges, the radial biologic attribute
+node and then symmetrized. For those edges, the radial imaging-feature attribute
 vector $b_{ij}$ contains normalized centroid distance, absolute and signed
 radial-shell difference, source and target radius, radial cosine similarity, a
 same-shell kernel, absolute visit gap, temporal-edge indicator, volume-feature
@@ -643,7 +642,7 @@ $\widehat{d}_{ij}$ is the unit direction, $\phi_\theta$ is the learned
 edge-filter network, $\mathrm{RBF}$ denotes radial basis function expansion,
 and $\odot$ denotes channel-wise multiplication. For earlier no-attribute
 models, $b_{ij}$ is omitted from $z_{ij}$; the final \modeltag{} model appends
-the radial biologic attributes above. This lets the same local operator use
+the radial imaging-feature attributes above. This lets the same local operator use
 spatial neighborhood structure, visit-gap information, and local
 imaging-feature contrasts when forecasting the next tumor-graph state. The
 graph-family models are
@@ -828,7 +827,7 @@ many weak edges, while no-edge and spatial-only ablations tested whether the
 node features alone could carry most of the scalar endpoint signal. The final
 model uses a hybrid $k=8$ neighborhood: candidate neighbors are ranked by an
 equal-weight normalized blend of spatial proximity and feature similarity, and
-radial biologic edge attributes encode distance plus local imaging-feature
+radial imaging-feature edge attributes encode distance plus local imaging-feature
 differences. The equal weighting is a neutral prior before validation, while
 $k=8$ preserves local tumor-cloud connectivity without making the graph nearly
 dense. This choice was retained because it produced the best balance of
@@ -1318,15 +1317,15 @@ The biology-calibrated model established that the rollout needed endpoint and
 active-burden supervision. The next question was whether message passing itself
 could be made more useful by changing the graph neighborhoods and edge
 attributes. This ablation compared no-edge, spatial, radial, feature-based,
-hybrid spatial-feature, and radial-biologic edge variants under the same
+hybrid spatial-feature, and radial imaging-feature edge variants under the same
 held-out fold protocol. The final retained model for the paper is therefore
-\modeltag{}, a hybrid spatial-feature neighborhood model with radial biologic
+\modeltag{}, a hybrid spatial-feature neighborhood model with radial imaging-feature
 edge attributes, rather than the earlier endpoint/active-calibrated graph.
 
 The full edge-family search is kept in the Supplementary Material so the main
 paper can focus on the three reviewer-facing landmarks: the original graph
 rollout, the endpoint-calibrated graph, and the final edge-aware graph. In the
-full ablation, the radial-biologic $k=8$ variant had the lowest scalar MC-mean
+full ablation, the radial imaging-feature $k=8$ variant had the lowest scalar MC-mean
 FTV MAE by a small margin (5.52 mL versus 5.56 mL), but \modeltag{} gave the
 strongest overall publication balance: nearly identical endpoint accuracy, the
 narrowest conformal intervals, the best raw 90\% coverage among the top
@@ -1428,6 +1427,9 @@ contribution is therefore structured-state forecasting rather than scalar
 burden dominance. The graph model contributes the structured spatial
 tumor-state forecast and active-node dynamics, while the scalar residual layer
 provides a direct patient-level FTV calibration.
+Therefore, the graph model is not positioned as the best scalar FTV regressor;
+its added value is the structured tumor-state forecast, with scalar or hybrid
+calibration available for scalar-only endpoint use.
 
 The hybrid readout combines these roles. An out-of-fold ridge center using the
 graph prediction, last-observed FTV, and \Tzero{} FTV improved
@@ -1514,7 +1516,7 @@ NACT residuals are used for calibration. This is a preliminary external test,
 not powered definitive external validation.}
 \label{tab:nactstress}
 \scriptsize
-\setlength{\tabcolsep}{3.1pt}
+\setlength{\tabcolsep}{2.3pt}
 \begin{tabular}{lrrrrr}
 \toprule
 Model & Det. MAE & Det. bias & MC MAE & Raw cov. & Conf. cov. \\
@@ -1522,7 +1524,7 @@ Model & Det. MAE & Det. bias & MC MAE & Raw cov. & Conf. cov. \\
 \midrule
 \calibrationtag{} & 20.17 & +19.71 & 23.51 & 0.455 & 0.455 \\
 No-edge endpoint & 19.21 & +18.82 & 22.11 & 0.455 & 0.455 \\
-Radial-biologic $k=8$ & 16.70 & +16.36 & 19.31 & 0.455 & 0.455 \\
+Radial MRI-feature $k=8$ & 16.70 & +16.36 & 19.31 & 0.455 & 0.455 \\
 \textbf{\modeltag{}} & \textbf{12.40} & +12.13 & \textbf{15.01} & \textbf{0.545} & \textbf{0.545} \\
 \bottomrule
 \end{tabular}
@@ -1725,7 +1727,7 @@ residual buckets, held-out fold protocol, and conformal calculation unchanged,
 endpoint-calibrated training produced sharper and better-centered distributions.
 The later edge-neighborhood ablation showed that the graph structure itself
 could also be improved: local hybrid spatial-feature neighborhoods with radial
-biologic edge attributes gave the best balanced graph-family model.
+imaging-feature edge attributes gave the best balanced graph-family model.
 
 For breast imaging, the clinical relevance is the ability to forecast an
 interpretable burden trajectory rather than only assign a response class. The
@@ -1770,7 +1772,7 @@ the retained graph configuration rather than simply the lowest-MAE ablation.
 The first calibration grid showed that FTV-only calibration could nearly match
 the endpoint error of \calibrationtag{}, but left substantially worse
 active-node-count calibration. The later edge-neighborhood grid showed that radial
-biologic edges had a slightly lower scalar MC-mean FTV MAE than \modeltag{},
+imaging-feature edges had a slightly lower scalar MC-mean FTV MAE than \modeltag{},
 but \modeltag{} gave narrower conformal intervals, better raw coverage, and
 slightly stronger sampled-cloud geometry. That balance is essential because
 the method is intended to remain a graph rollout model with scalar FTV readout,

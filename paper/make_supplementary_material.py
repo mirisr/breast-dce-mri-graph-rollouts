@@ -11,6 +11,15 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent
 TABLES = ROOT / "tables"
 RESULTS = ROOT.parent / "results"
+if not (RESULTS / "bio_ftv_real_stratified_ablation").exists():
+    for candidate in (
+        ROOT.parent / "reports",
+        ROOT.parents[1] / "results",
+        ROOT.parents[1] / "reports",
+    ):
+        if (candidate / "bio_ftv_real_stratified_ablation").exists():
+            RESULTS = candidate
+            break
 
 
 def esc(value: object) -> str:
@@ -63,11 +72,14 @@ def clean_tail_label(value: object) -> str:
 def clean_model_label(value: object) -> str:
     text = str(value)
     replacements = {
-        "radial_bio_k16": "Radial-bio k=16",
-        "spatial_k4_bio": "Spatial-bio k=4",
+        "radial_bio_k16": "Radial imaging-feature k=16",
+        "Radial-bio k=8": "Radial imaging-feature k=8",
+        "Radial-biologic k=8": "Radial imaging-feature k=8",
+        "spatial_k4_bio": "Spatial imaging-feature k=4",
         "radial_geo_k8": "Radial-geo k=8",
-        "hybrid_a75_bio_k8": "Hybrid-bio alpha=.75 k=8",
-        "radial_bio_k4": "Radial-bio k=4",
+        "Hybrid-bio k=8": "Hybrid imaging-feature k=8",
+        "hybrid_a75_bio_k8": "Hybrid imaging-feature alpha=.75 k=8",
+        "radial_bio_k4": "Radial imaging-feature k=4",
         "feature_volume_k8": "Feature-volume k=8",
         "bio_ftv010_alive000": "FTV .010 only",
         "hybrid_a50_k8": "Hybrid alpha=.50 k=8",
@@ -235,7 +247,7 @@ Patient-level prediction rows and raw imaging data are not included here.
         r"""\clearpage
 \section*{S2. Graph-Neighborhood and Edge-Attribute Ablations}
 The graph-family search includes no-edge, spatial, radial, feature-only,
-hybrid spatial-feature, and radial-biologic edge variants. These rows are kept
+hybrid spatial-feature, and radial imaging-feature edge variants. These rows are kept
 in the supplement because they support the retained model choice without making
 the main manuscript table too wide.
 """
@@ -550,6 +562,7 @@ tumor-state forecast produced by the graph model.
             "conformal_90_coverage": "Conf cov",
         }
     )
+    external["Model"] = external["Model"].map(clean_model_label)
     sections.append(
         table_block(
             external,
