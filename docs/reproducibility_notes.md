@@ -11,7 +11,8 @@ hybrid_a50_bio_k8
 It is reported as `Hybrid-Edge k=8`. It extends the Endpoint+Active calibration
 model with a hybrid spatial-feature neighborhood and radial imaging-feature
 edge attributes. The `bio` substring in run tags is a historical internal label
-for these attributes and endpoint-burden losses, not a biological-marker claim.
+for endpoint-burden losses and imaging-feature edge attributes, not a
+biological-marker claim.
 
 The retained configuration is recorded in:
 
@@ -19,19 +20,15 @@ The retained configuration is recorded in:
 configs/hybrid_a50_bio_k8.json
 ```
 
-For the full reviewer-facing audit trail, including manuscript table paths,
-external stress-test details, and launch commands, see:
+## TMI Submission Boundary
 
-```text
-docs/SUPPLEMENTARY_REPRODUCIBILITY_DETAILS.md
-```
+The TMI manuscript package should be submitted as one complete paper PDF with
+text, figures, tables, and references embedded in the manuscript. Expanded
+text-and-figure supplementary material is not part of this submission package.
 
-For the manuscript-facing supplementary tables, see:
-
-```text
-paper/supplementary_material.pdf
-paper/supplementary_material.tex
-```
+This repository can still be used as a code and artifact release surface. It
+should document scripts, configurations, aggregate tables, generated figures,
+and data-access instructions without relying on a manuscript-style supplement.
 
 ## Main Evaluation Path
 
@@ -44,8 +41,7 @@ I-SPY2/ACRIN cohort. The primary metrics are:
 - conformal 90% interval width.
 
 Secondary analyses include deterministic bias/MAE, active-node error, SWD,
-Chamfer, Dice, final-visit horizon checks, subtype/source/burden strata, and
-MRI-burden threshold readouts.
+Chamfer, Dice, subtype/source/burden strata, and MRI-burden threshold readouts.
 
 The independent Breast-MRI-NACT-Pilot stress test is reported only for the four
 paper-family endpoint-calibrated models:
@@ -82,18 +78,9 @@ residual_stratify_by=none
 interval=0.90
 ```
 
-The original baseline-to-Endpoint+Active comparison used:
-
-```text
-N_MC=256
-METRIC_DRAWS=0
-start visits: T0, T1, T2
-target visits: later visits through T3
-```
-
 The sampler uses residual buckets by `(start_visit, predicted_visit)`, excludes
-the target patient from calibration residuals, samples active masks with Gumbel
-top-k, and reports raw and conformal FTV intervals.
+the target patient from calibration residuals, samples active masks for
+graph-family models, and reports raw and conformal FTV intervals.
 
 ## Main Result Roots
 
