@@ -1,6 +1,6 @@
 # Release Audit
 
-This repository has been updated to the current Bio-FTV manuscript state, but it
+This repository has been updated toward the current TMI manuscript state, but it
 should remain private until the checks below are complete.
 
 ## Current Release State
@@ -12,14 +12,13 @@ should remain private until the checks below are complete.
   under `experiments/`.
 - Independent Breast-MRI-NACT-Pilot external stress-test helpers are under
   `experiments/breast_nact_external/` and `cradle/`.
-- Supplementary reproducibility details are under
-  `docs/SUPPLEMENTARY_REPRODUCIBILITY_DETAILS.md`.
-- Manuscript supplementary material is under `paper/supplementary_material.tex`
-  and `paper/supplementary_material.pdf`.
 - Current result roots used by the paper are under `results/`.
 - The final manuscript model is `hybrid_a50_bio_k8` / `Hybrid-Edge k=8`.
-- The older `bio_ftv020_alive005` model is now a historical Endpoint+Active
+- The older `bio_ftv020_alive005` model is a historical Endpoint+Active
   comparator.
+- The TMI submission package should be a single complete manuscript PDF. Do not
+  submit manuscript-style supplemental documents with expanded text, figures, or
+  tables.
 
 ## Must Check Before Public GitHub Release
 
