@@ -41,6 +41,101 @@ def sync_report_figures() -> None:
             shutil.copy2(src, FIGURES / name)
 
 
+def make_endpoint_pipeline_figure() -> None:
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
+
+    ensure_dirs()
+    fig, ax = plt.subplots(figsize=(10.4, 2.55))
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+
+    boxes = [
+        (0.025, 0.53, 0.115, 0.28, "DCE-MRI\nvisits", "T0/T1/T2"),
+        (0.170, 0.53, 0.135, 0.28, "Support +\nregistration", "visit-aligned ROI"),
+        (0.335, 0.53, 0.130, 0.28, "SLIC\nsupervoxel graph", "local nodes"),
+        (0.500, 0.53, 0.145, 0.28, "Hybrid-edge\nrollout", "motion, features,\nactive status"),
+        (0.685, 0.63, 0.125, 0.23, "FTV\nreadout", "active volume"),
+        (0.855, 0.63, 0.120, 0.23, "Residual MC\n+ conformal", "FTV distribution"),
+    ]
+    colors = ["#eff6ff", "#f0fdf4", "#fff7ed", "#f5f3ff", "#ecfeff", "#fef2f2"]
+    edge_colors = ["#2563eb", "#16a34a", "#ea580c", "#7c3aed", "#0891b2", "#dc2626"]
+
+    for (x, y, w, h, title, sub), fill, edge in zip(boxes, colors, edge_colors):
+        ax.add_patch(
+            FancyBboxPatch(
+                (x, y),
+                w,
+                h,
+                boxstyle="round,pad=0.012,rounding_size=0.018",
+                facecolor=fill,
+                edgecolor=edge,
+                linewidth=1.05,
+            )
+        )
+        ax.text(x + w / 2, y + h * 0.63, title, ha="center", va="center", fontsize=8.2, weight="bold", color="#111827")
+        ax.text(x + w / 2, y + h * 0.24, sub, ha="center", va="center", fontsize=7.2, color="#475569")
+
+    for i in range(len(boxes) - 1):
+        x, y, w, h, *_ = boxes[i]
+        nx, ny, nw, nh, *_ = boxes[i + 1]
+        ax.add_patch(
+            FancyArrowPatch(
+                (x + w + 0.009, y + h / 2),
+                (nx - 0.009, ny + nh / 2),
+                arrowstyle="-|>",
+                mutation_scale=10,
+                linewidth=1.0,
+                color="#64748b",
+            )
+        )
+
+    branch_specs = [
+        (0.555, 0.52, 0.555, 0.28, "Predicted T3 graph state", "sampled-cloud geometry,\nactive nodes"),
+        (0.752, 0.62, 0.752, 0.28, "Endpoint burden", "deterministic FTV,\nactive mass"),
+        (0.915, 0.62, 0.915, 0.28, "Evaluation", "MAE, CRPS, coverage;\nSWD, Chamfer, Dice"),
+    ]
+    for x0, y0, x1, y1, title, sub in branch_specs:
+        ax.add_patch(
+            FancyArrowPatch(
+                (x0, y0),
+                (x1, y1 + 0.13),
+                arrowstyle="-|>",
+                mutation_scale=9,
+                linewidth=0.9,
+                color="#94a3b8",
+                connectionstyle="arc3,rad=-0.08",
+            )
+        )
+        ax.add_patch(
+            FancyBboxPatch(
+                (x1 - 0.070, y1),
+                0.140,
+                0.145,
+                boxstyle="round,pad=0.010,rounding_size=0.014",
+                facecolor="#ffffff",
+                edgecolor="#cbd5e1",
+                linewidth=0.9,
+            )
+        )
+        ax.text(x1, y1 + 0.095, title, ha="center", va="center", fontsize=7.3, weight="bold", color="#111827")
+        ax.text(x1, y1 + 0.038, sub, ha="center", va="center", fontsize=6.6, color="#475569")
+
+    ax.text(
+        0.025,
+        0.095,
+        "The scalar FTV distribution is a readout from the predicted graph state, not a replacement for graph-state evaluation.",
+        ha="left",
+        va="center",
+        fontsize=7.7,
+        color="#334155",
+    )
+    fig.savefig(FIGURES / "endpoint_calibrated_spatial_forecasting.pdf", bbox_inches="tight")
+    fig.savefig(FIGURES / "endpoint_calibrated_spatial_forecasting.png", dpi=260, bbox_inches="tight")
+    plt.close(fig)
+
+
 def mc_report_root(tag: str) -> Path:
     if tag == BASELINE_TAG:
         return REPO / "reports/conditional_mc_consistent_rollout"
@@ -1807,70 +1902,204 @@ def make_patient_trajectory_figure() -> None:
     plt.close(fig)
 
 
+def _visit_graph_arrays(graph: dict, visit_idx: int, volume_idx: int = 1) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    offsets = graph["visit_offsets"].tolist()
+    sl = slice(int(offsets[visit_idx]), int(offsets[visit_idx + 1]))
+    pos = graph["pos"][sl].detach().cpu().numpy().astype(float)
+    x = graph["x"][sl].detach().cpu().numpy().astype(float)
+    alive = graph["alive"][sl].detach().cpu().numpy().astype(float) > 0.5
+    vol = np.clip(x[:, volume_idx], 0.0, None)
+    return pos, vol, alive
+
+
+def _knn_edges(points: np.ndarray, k: int = 4) -> list[tuple[int, int]]:
+    if points.shape[0] < 2:
+        return []
+    d = np.linalg.norm(points[:, None, :] - points[None, :, :], axis=-1)
+    np.fill_diagonal(d, np.inf)
+    kk = min(k, points.shape[0] - 1)
+    idx = np.argpartition(d, kk, axis=1)[:, :kk]
+    edges: set[tuple[int, int]] = set()
+    for i in range(points.shape[0]):
+        for j in idx[i]:
+            a, b = sorted((int(i), int(j)))
+            edges.add((a, b))
+    return sorted(edges)
+
+
+def _plot_graph_cloud(
+    ax,
+    pos: np.ndarray,
+    vol: np.ndarray,
+    alive: np.ndarray,
+    *,
+    title: str,
+    subtitle: str,
+    norm,
+) -> None:
+    active_pos = pos[alive]
+    active_vol = vol[alive]
+    ax.set_title(title, fontsize=8.4, weight="bold", loc="left", pad=2)
+    ax.text(0.01, 0.02, subtitle, transform=ax.transAxes, fontsize=6.8, color="#475569", va="bottom")
+    if active_pos.size:
+        xy = np.column_stack([active_pos[:, 2], active_pos[:, 1]])
+        for i, j in _knn_edges(xy, k=4):
+            ax.plot(
+                [xy[i, 0], xy[j, 0]],
+                [xy[i, 1], xy[j, 1]],
+                color="#cbd5e1",
+                linewidth=0.35,
+                alpha=0.65,
+                zorder=1,
+            )
+        vmax = max(float(np.nanpercentile(active_vol, 95)), 1e-4)
+        sizes = 8.0 + 28.0 * np.sqrt(np.clip(active_vol, 0.0, None) / vmax)
+        ax.scatter(
+            xy[:, 0],
+            xy[:, 1],
+            s=sizes,
+            c=np.clip(active_vol, 1e-4, None),
+            cmap="viridis",
+            norm=norm,
+            edgecolors="white",
+            linewidths=0.25,
+            alpha=0.96,
+            zorder=3,
+        )
+        pad = max(float(np.ptp(xy[:, 0])), float(np.ptp(xy[:, 1])), 1.0) * 0.12
+        ax.set_xlim(float(xy[:, 0].min() - pad), float(xy[:, 0].max() + pad))
+        ax.set_ylim(float(xy[:, 1].min() - pad), float(xy[:, 1].max() + pad))
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+
 def make_two_patient_rollout_static() -> None:
     import matplotlib.pyplot as plt
+    import torch
+    from matplotlib.colors import LogNorm
 
-    # One I-SPY2 and one ACRIN held-out example with non-trivial T3 burden,
-    # raw interval coverage, and strong deterministic agreement. The aggregate
-    # tables carry the cohort-level performance claims; this panel is a visual
-    # example of successful graph-to-endpoint rollout behavior.
+    # One I-SPY2 and one ACRIN held-out example with non-trivial T3 burden.
+    # Aggregate tables carry the cohort-level claims; this diagnostic panel
+    # makes the graph-state outputs and endpoint distribution visible.
     patient_ids = ["ISPY2-910706", "ACRIN-6698-734997"]
     latest_root = REPO / f"reports/edge_attr_meaning_breast_mc/{LATEST_RETAINED_TAG}"
     per_patient = pd.read_parquet(latest_root / "conditional_mc_per_patient.parquet").copy()
     per_patient["bucket"] = per_patient["start_visit"].astype(str) + "->" + per_patient["predicted_visit"].astype(str)
     samples_path = latest_root / "conditional_mc_samples.parquet"
     samples = pd.read_parquet(samples_path)
+    eval_df = pd.read_parquet(REPO / f"reports/edge_attr_meaning_breast_eval/{LATEST_RETAINED_TAG}/simulation_per_patient.parquet")
 
     rows = []
     for pid in patient_ids:
-        row = per_patient[
+        mc_row = per_patient[
             per_patient["patient_id"].eq(pid)
             & per_patient["start_visit"].eq("T0")
             & per_patient["predicted_visit"].eq("T3")
         ]
-        if not row.empty:
-            rows.append(row.iloc[0])
+        eval_row = eval_df[
+            eval_df["patient_id"].eq(pid)
+            & eval_df["start_visit"].eq("T0")
+            & eval_df["predicted_visit"].eq("T3")
+        ]
+        graph_path = REPO / f"datasets/ispy2/graphs_consistent/{pid}.pt"
+        if not mc_row.empty and not eval_row.empty and graph_path.is_file():
+            rows.append((mc_row.iloc[0], eval_row.iloc[0], graph_path))
     if not rows:
         return
 
-    fig, axes = plt.subplots(len(rows), 2, figsize=(8.4, 2.85 * len(rows)))
+    fig, axes = plt.subplots(
+        len(rows),
+        4,
+        figsize=(9.2, 2.65 * len(rows)),
+        gridspec_kw={"width_ratios": [1.05, 1.18, 1.05, 1.28], "wspace": 0.28, "hspace": 0.40},
+    )
     if len(rows) == 1:
         axes = np.asarray([axes])
-    for row_idx, row in enumerate(rows):
-        pid = str(row["patient_id"])
+
+    for row_idx, (mc_row, eval_row, graph_path) in enumerate(rows):
+        pid = str(mc_row["patient_id"])
+        graph = torch.load(graph_path, map_location="cpu", weights_only=False)
+        t0_pos, t0_vol, t0_alive = _visit_graph_arrays(graph, 0)
+        t3_pos, t3_vol, t3_alive = _visit_graph_arrays(graph, 3)
+        active_vol = np.concatenate([t0_vol[t0_alive], t3_vol[t3_alive]])
+        vmin = max(float(np.nanpercentile(active_vol, 5)), 1e-4)
+        vmax = max(float(np.nanpercentile(active_vol, 98)), vmin * 1.5)
+        norm = LogNorm(vmin=vmin, vmax=vmax)
         draws = samples[
             samples["patient_id"].eq(pid)
             & samples["start_visit"].eq("T0")
             & samples["predicted_visit"].eq("T3")
         ]["ftv_sample_ml"].to_numpy(float)
-        ax_bar, ax_hist = axes[row_idx]
 
-        labels = ["Observed T0", "Predicted T3", "Observed T3"]
-        values = [float(row["ftv_t0_ml"]), float(row["pred_ftv_det_ml"]), float(row["obs_ftv_ml"])]
-        ax_bar.bar(labels, values, color=["#7A869A", "#1F77B4", "#2A9D8F"], width=0.6)
-        ax_bar.set_ylabel("FTV (mL)")
-        ax_bar.set_title(pid, fontsize=10, weight="bold")
-        ax_bar.grid(True, axis="y", color="#E6E6E6", linewidth=0.7)
-        for tick in ax_bar.get_xticklabels():
-            tick.set_rotation(12)
-            tick.set_ha("right")
+        ax_t0, ax_metric, ax_t3, ax_hist = axes[row_idx]
+        collection = str(eval_row.get("collection", "held-out"))
+        _plot_graph_cloud(
+            ax_t0,
+            t0_pos,
+            t0_vol,
+            t0_alive,
+            title=f"{pid} ({collection})\nObserved T0 graph",
+            subtitle=f"active SV: {int(t0_alive.sum())}",
+            norm=norm,
+        )
+        _plot_graph_cloud(
+            ax_t3,
+            t3_pos,
+            t3_vol,
+            t3_alive,
+            title="Observed T3 graph",
+            subtitle=f"active SV: {int(t3_alive.sum())}",
+            norm=norm,
+        )
 
-        x_max = max(float(np.nanpercentile(draws, 98)), float(row["obs_ftv_ml"]) * 1.4, 5.0)
+        ax_metric.axis("off")
+        ax_metric.set_title("Retained T3 state diagnostics", fontsize=8.4, weight="bold", loc="left", pad=2)
+        diagnostics = [
+            f"FTV pred / obs: {float(eval_row['pred_ftv_ml']):.1f} / {float(eval_row['obs_ftv_ml']):.1f} mL",
+            f"FTV abs. error: {float(eval_row['ftv_abs_err_ml']):.2f} mL",
+            f"Active-count error: {float(eval_row['alive_count_abs_err']):.0f} SV",
+            f"SWD / Chamfer: {float(eval_row['swd_mm']):.2f} / {float(eval_row['chamfer_mm']):.2f} mm",
+            f"Surface Dice: {float(eval_row['surface_dice']):.2f}",
+            f"Raw 90% interval: {float(mc_row['ftv_raw_p05_ml']):.1f}-{float(mc_row['ftv_raw_p95_ml']):.1f} mL",
+        ]
+        y = 0.90
+        for text in diagnostics:
+            ax_metric.text(0.02, y, text, transform=ax_metric.transAxes, fontsize=7.3, color="#111827", va="center")
+            y -= 0.135
+        ax_metric.text(
+            0.02,
+            0.05,
+            "Exact retained-model held-out diagnostics.",
+            transform=ax_metric.transAxes,
+            fontsize=6.5,
+            color="#64748b",
+            va="bottom",
+        )
+
+        x_max = max(float(np.nanpercentile(draws, 98)), float(mc_row["obs_ftv_ml"]) * 1.4, 5.0)
         draws_clip = draws[(draws >= 0) & (draws <= x_max)]
         ax_hist.hist(draws_clip, bins=24, color="#bfdbfe", edgecolor="#60a5fa", linewidth=0.6, density=True)
-        ax_hist.axvspan(float(row["ftv_raw_p05_ml"]), float(row["ftv_raw_p95_ml"]), color="#93c5fd", alpha=0.25, lw=0)
-        ax_hist.axvline(float(row["pred_ftv_det_ml"]), color="#1F77B4", linewidth=1.8, label="det. pred.")
-        ax_hist.axvline(float(row["obs_ftv_ml"]), color="#2A9D8F", linewidth=1.8, label="observed")
+        ax_hist.axvspan(float(mc_row["ftv_raw_p05_ml"]), float(mc_row["ftv_raw_p95_ml"]), color="#93c5fd", alpha=0.25, lw=0)
+        ax_hist.axvline(float(mc_row["pred_ftv_det_ml"]), color="#1F77B4", linewidth=1.8, label="det. pred.")
+        ax_hist.axvline(float(mc_row["obs_ftv_ml"]), color="#2A9D8F", linewidth=1.8, label="observed")
         ax_hist.set_title(
-            f"MC mean {row['ftv_mc_mean_ml']:.1f} mL, raw 90% {row['ftv_raw_p05_ml']:.1f}-{row['ftv_raw_p95_ml']:.1f}",
-            fontsize=10,
+            f"Endpoint MC distribution\nmean {mc_row['ftv_mc_mean_ml']:.1f} mL",
+            fontsize=8.4,
+            weight="bold",
+            loc="left",
+            pad=2,
         )
-        ax_hist.set_xlabel("T3 FTV sample (mL)")
+        ax_hist.set_xlabel("T3 FTV sample (mL)", fontsize=7.5)
         ax_hist.set_yticks([])
+        ax_hist.tick_params(axis="x", labelsize=7)
         ax_hist.grid(True, axis="x", color="#E6E6E6", linewidth=0.7)
-        ax_hist.legend(frameon=False, fontsize=8)
-    fig.suptitle("Illustrative Hybrid-Edge k=8 T0-to-T3 FTV forecasts", fontsize=12, weight="bold")
-    fig.tight_layout()
+        ax_hist.legend(frameon=False, fontsize=6.8, loc="upper right")
+
+    fig.suptitle("Graph-state and endpoint diagnostics for retained Hybrid-Edge k=8 forecasts", fontsize=11, weight="bold")
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(FIGURES / "ispy2_two_patient_rollout_static.pdf", bbox_inches="tight")
     fig.savefig(FIGURES / "ispy2_two_patient_rollout_static.png", dpi=220, bbox_inches="tight")
     plt.close(fig)
@@ -1879,6 +2108,7 @@ def make_two_patient_rollout_static() -> None:
 def main() -> None:
     ensure_dirs()
     sync_report_figures()
+    make_endpoint_pipeline_figure()
     related_work_positioning_table().to_csv(TABLES / "related_work_positioning.csv", index=False)
     bucket_calibration_summary().to_csv(TABLES / "calibration_by_bucket.csv", index=False)
     calibration_subgroup_robustness_table().to_csv(TABLES / "calibration_subgroup_robustness.csv", index=False)
