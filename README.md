@@ -1,51 +1,36 @@
-# Endpoint-Calibrated Graph Rollouts for Breast DCE-MRI
+# Endpoint-Calibrated Graph-Native Tumor-State Forecasting in Breast DCE-MRI
 
-This repository packages the code, derived analysis artifacts, figures, tables,
-and manuscript source for endpoint-calibrated spatial graph rollouts for breast
-DCE-MRI functional tumor volume (FTV) forecasting.
+This repository packages the code, aggregate analysis artifacts, figures,
+tables, and manuscript source for endpoint-calibrated graph-native tumor-state
+forecasting from longitudinal breast DCE-MRI.
 
-The current manuscript model is `hybrid_a50_bio_k8`, reported in the paper as
+The current manuscript target is IEEE Transactions on Medical Imaging. The
+submission is organized as a single complete manuscript PDF. No manuscript-style
+text-and-figure supplement is part of the TMI submission package.
+
+The retained manuscript model is `hybrid_a50_bio_k8`, reported in the paper as
 `Hybrid-Edge k=8`. It combines endpoint and active-burden calibration with a
 hybrid spatial-feature graph neighborhood and radial imaging-feature edge
 attributes. The `bio` substring in run tags is a historical internal label for
-these attributes and endpoint-burden losses, not a biological-marker claim.
-The older `bio_ftv020_alive005` model is retained as the historical
-Endpoint+Active calibration baseline, not the final publication model.
+endpoint-burden calibration and imaging-feature edge attributes, not a
+biomarker claim. The older `bio_ftv020_alive005` model is retained as the
+historical Endpoint+Active calibration baseline, not the final publication
+model.
 
 ## Current Paper
 
-The manuscript package is under `paper/`.
+The current manuscript source is under `paper/`.
 
 ```bash
 cd paper
 latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
 ```
 
-The current compiled manuscript is also included as:
+The compiled manuscript copy is included as:
 
 ```text
 paper/bio_ftv020_mc_manuscript.pdf
 ```
-
-The reviewer-facing reproducibility supplement is:
-
-```text
-docs/SUPPLEMENTARY_REPRODUCIBILITY_DETAILS.md
-```
-
-It maps the paper's model names, data partitions, external stress-test rows,
-training/evaluation launchers, and figure/table artifacts to repository paths.
-
-The manuscript-facing supplementary material is:
-
-```text
-paper/supplementary_material.pdf
-paper/supplementary_material.tex
-```
-
-It collects expanded endpoint-loss, graph-neighborhood, scalar-baseline,
-burden-conditional, reliability/PIT, source-stratified, and external
-stress-test tables.
 
 ## Main Claims Supported By This Package
 
@@ -55,8 +40,8 @@ stress-test tables.
 - The retained Hybrid-Edge model improves held-out T0-to-T3 FTV error,
   coverage, CRPS, and conformal interval width relative to the original graph
   rollout.
-- Scalar and hybrid FTV baselines define the boundary of the graph claim: scalar
-  centers remain strong for scalar FTV, while the graph model contributes
+- Scalar and hybrid FTV baselines define the boundary of the graph claim:
+  scalar centers remain strong for scalar FTV, while the graph model contributes
   structured tumor-state forecasts and active-node dynamics.
 - The independent Breast-MRI-NACT-Pilot analysis is reported as a preliminary
   external stress test on 11 graph-ready patients, not as powered clinical
@@ -72,7 +57,7 @@ experiments/stage1_forecaster training, deterministic eval, edge ablations
 experiments/consistent_rollout residual MC evaluation and Slurm wrappers
 models/                       model manifest and checkpoint packaging notes
 notebooks/                    analysis notebooks and plotting helpers
-paper/                        IEEE Access manuscript source, figures, tables
+paper/                        TMI manuscript source, figures, tables
 results/                      derived result tables, MC outputs, and summaries
 docs/                         reproducibility notes and historical planning notes
 environment/                  minimal dependency notes
@@ -94,13 +79,10 @@ manuscript-support scripts.
 
 | Path | Purpose |
 | --- | --- |
-| `paper/main.tex` | Current IEEE Access manuscript source. |
-| `paper/supplementary_material.tex` | Supplementary material source with expanded ablation and calibration tables. |
-| `paper/supplementary_material.pdf` | Compiled supplementary material. |
-| `paper/make_supplementary_material.py` | Regenerates supplementary material from paper-facing CSV tables. |
-| `paper/figures/` | Current paper figures, including synthetic, calibration, edge-ablation, and clinical burden panels. |
-| `paper/tables/` | Current paper-facing CSV tables. |
-| `docs/SUPPLEMENTARY_REPRODUCIBILITY_DETAILS.md` | Supplementary audit trail for model tags, data partitions, external stress-test results, and reproduction commands. |
+| `paper/main.tex` | Current TMI manuscript source. |
+| `paper/bio_ftv020_mc_manuscript.pdf` | Current compiled manuscript copy. |
+| `paper/figures/` | Current paper figures, including synthetic, calibration, edge-ablation, reliability, and burden-monitoring panels. |
+| `paper/tables/` | Current paper-facing aggregate CSV tables. |
 | `paper/make_manuscript_support.py` | Regenerates paper tables and support figures from `results/`. |
 | `experiments/stage1_forecaster/train_consistent_forecaster_v2.py` | Current rollout training entry point with endpoint losses, dynamic edge modes, and optional edge attributes. |
 | `experiments/stage1_forecaster/edge_modes.py` | Dynamic no-edge, spatial, radial, feature, hybrid, and radial imaging-feature graph construction utilities. |
@@ -109,7 +91,7 @@ manuscript-support scripts.
 | `experiments/consistent_rollout/run_conditional_mc.py` | Conditional residual Monte Carlo evaluator. |
 | `experiments/breast_nact_external/` | Independent Breast-MRI-NACT-Pilot audit, preprocessing, and external evaluation helpers. |
 | `cradle/run_breast_nact_external_4visit_paper_models_*.sbatch` | External stress-test evaluation and source-residual MC launchers for the four paper-family models. |
-| `notebooks/breast_cohort_mc_and_graph_ablation_results.ipynb` | Current breast cohort and synthetic ablation comparison notebook. |
+| `notebooks/breast_cohort_mc_and_graph_ablation_results.ipynb` | Breast cohort and synthetic ablation comparison notebook. |
 | `notebooks/breast_edge_attribute_publication_model_results.ipynb` | Edge-attribute publication-model analysis notebook. |
 | `notebooks/clinical_burden_monitoring_results.ipynb` | MRI-burden monitoring readout notebook. |
 
@@ -140,13 +122,13 @@ results/edge_attr_meaning_breast_mc/hybrid_a50_bio_k8/
 ## Data Status
 
 This repository does not include raw DCE-MRI image volumes. The source imaging
-collections are public/controlled-access TCIA resources, and users should obtain
-those datasets through TCIA under the relevant data-use terms.
+collections are public or controlled-access TCIA resources, and users should
+obtain those datasets through TCIA under the relevant data-use terms.
 
-This release package currently includes derived graph tensors and patient-level
-derived result files for reproducibility auditing. For any stricter public
-archive, review `RELEASE_AUDIT.md` and decide whether to keep those derived
-patient-level files or replace them with aggregate paper tables plus
+This private release package currently includes derived graph tensors and
+patient-level derived result files for reproducibility auditing. Before any
+public release, review `RELEASE_AUDIT.md` and decide whether to keep those
+derived patient-level files or replace them with aggregate paper tables plus
 instructions for rebuilding the derived artifacts from TCIA data.
 
 ## Reproducibility Notes
@@ -156,9 +138,9 @@ paper tables. Re-running the full model training path requires the graph
 artifacts, fold assignments, and the training scripts in `experiments/`.
 
 The final Hybrid-Edge training/evaluation scripts and MC outputs are included,
-but checkpoint files are not currently mirrored into this local publication
-package. Before claiming that the public repo contains trained weights, mirror
-the intended checkpoint families into `models/` and update
+but checkpoint files are not currently mirrored into this release package.
+Before claiming that the public repo contains trained weights, mirror the
+intended checkpoint families into `models/` and update
 `models/MODEL_MANIFEST.md`.
 
 ## Release Checklist
