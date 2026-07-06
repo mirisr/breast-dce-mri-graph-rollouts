@@ -29,7 +29,7 @@ calibration baseline, not the final publication model.
 configs/                      retained model configuration files
 cradle/                       cluster setup and launch notes
 data/                         data-access instructions and manifests only
-docs/                         reproducibility and model-change notes
+docs/                         reproducibility notes
 environment/                  minimal dependency notes
 experiments/preprocessing/    graph construction and preprocessing entry points
 experiments/stage1_forecaster training, deterministic eval, edge ablations
