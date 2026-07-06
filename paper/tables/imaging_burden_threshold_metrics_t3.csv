@@ -1,4 +1,0 @@
-threshold_ml,n,event_rate,score_auc,probability_cutoff,sensitivity,specificity,ppv,npv,tp,fp,tn,fn,note
-0.1,758,0.00395778364116095,0.4602649006622517,0.5,0.0,1.0,,0.996042216358839,0,0,755,3,"MRI low-residual-burden threshold, not pathology response."
-1.0,758,0.014511873350923483,0.6751247413898016,0.5,0.0,0.9973226238286479,0.0,0.9854497354497355,0,2,745,11,"MRI low-residual-burden threshold, not pathology response."
-5.0,758,0.20976253298153033,0.9573083020967861,0.5,0.7547169811320755,0.9699499165275459,0.8695652173913043,0.9370967741935484,120,18,581,39,"MRI low-residual-burden threshold, not pathology response."

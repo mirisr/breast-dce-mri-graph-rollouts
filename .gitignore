@@ -15,8 +15,9 @@ __pycache__/
 venv/
 *.err
 *.out
+*.parquet
 
-# LaTeX build products
+# LaTeX build products and generated manuscript outputs
 *.aux
 *.bbl
 *.blg
@@ -28,9 +29,9 @@ venv/
 *.toc
 *.lof
 *.lot
-paper/main.pdf
+paper/
 
-# Raw or large image data should not be added to this repo by accident.
+# Raw, processed, and generated data should not be added to the public repo.
 raw/
 dicom/
 nifti/
@@ -41,15 +42,21 @@ data/**/dicom/
 data/**/nifti/
 data/**/images/
 data/**/segmentations/
+data/**/*.pt
+data/**/*.pth
+data/**/*.parquet
+data/**/*.csv
+data/**/*.xlsx
+data/**/*_audit.md
 experiments/**/logs/
 experiments/**/runs/
 reports/**/logs/
-results/**/logs/
+results/
 external_models/
 
-# Keep derived graph tensors, model checkpoints, and parquet outputs available
-# in this private working repository. Revisit these exceptions before converting
-# the repository to a public release.
-!data/ispy2/graphs_consistent/*.pt
-!models/**/*.pt
-!results/**/*.parquet
+# Model checkpoints and fold logs are generated artifacts.
+models/**/*.pt
+models/**/*.pth
+models/**/train_log.json
+models/**/last.pt
+models/**/best.pt
