@@ -86,12 +86,3 @@ Generated artifacts should remain outside git unless a separate release decision
 is made for a specific archive. The `.gitignore` is configured to keep raw data,
 derived data, result outputs, paper outputs, and checkpoint files out of the
 public repository by default.
-
-## Release Checklist
-
-Before adding any generated artifact back to the repository, verify that:
-
-1. the artifact is allowed under the relevant data-use terms;
-2. the artifact does not expose patient-level derived data unintentionally;
-3. the README and manifests accurately describe what is distributed;
-4. the manuscript code-availability statement points to the final public URL.
